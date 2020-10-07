@@ -36,7 +36,7 @@ impl Aggregation {
         // Execute aggregation on given round.
         let chunk_id = 0usize;
         let settings = environment.to_settings();
-        let (_, _, curve, _, _, _) = settings;
+        let (_, _, curve, _, _, _, _, _) = settings;
         let result = match curve {
             CurveKind::Bls12_377 => Phase1::aggregation(
                 &contribution_readers,
@@ -100,7 +100,7 @@ impl Aggregation {
 
             // Derive the expected file size of the contribution.
             let settings = environment.to_settings();
-            let (_, _, curve, _, _, _) = settings;
+            let (_, _, curve, _, _, _, _, _) = settings;
             let expected = match curve {
                 CurveKind::Bls12_377 => contribution_filesize!(Bls12_377, settings, chunk_id, compressed),
                 CurveKind::BW6 => contribution_filesize!(BW6_761, settings, chunk_id, compressed),
@@ -153,7 +153,7 @@ impl Aggregation {
 
         // Check the round filesize will fit on the system.
         let settings = environment.to_settings();
-        let (_, _, curve, _, _, _) = settings;
+        let (_, _, curve, _, _, _, _, _) = settings;
         let round_size = match curve {
             CurveKind::Bls12_377 => round_filesize!(Bls12_377, settings, chunk_id, compressed, is_initial),
             CurveKind::BW6 => round_filesize!(BW6_761, settings, chunk_id, compressed, is_initial),

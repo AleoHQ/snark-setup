@@ -5,7 +5,7 @@ macro_rules! phase1_chunked_parameters {
     ($curve:ident, $settings:ident, $chunk_id:ident) => {{
         use phase1::Phase1Parameters;
 
-        let (contribution_mode, proving_system, _, power, batch_size, chunk_size) = $settings;
+        let (contribution_mode, proving_system, _, power, batch_size, chunk_size, _, _) = $settings;
         Phase1Parameters::<$curve>::new_chunk(
             contribution_mode,
             $chunk_id as usize,
@@ -24,7 +24,7 @@ macro_rules! phase1_full_parameters {
     ($curve:ident, $settings:ident) => {{
         use phase1::Phase1Parameters;
 
-        let (_, proving_system, _, power, batch_size, _) = $settings;
+        let (_, proving_system, _, power, batch_size, _, _, _) = $settings;
         Phase1Parameters::<$curve>::new_full(proving_system, power, batch_size)
     }};
 }

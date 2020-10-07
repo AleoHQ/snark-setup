@@ -16,6 +16,7 @@ pub static TEST_ENVIRONMENT: Environment = Environment::Test(Parameters::AleoTes
 
 /// Environment for testing purposes only.
 pub static TEST_ENVIRONMENT_3: Environment = Environment::Test(Parameters::AleoTest3Chunks);
+pub static TEST_ENVIRONMENT_3_NO_COMPRESSION: Environment = Environment::Test(Parameters::AleoTest3ChunksNoCompression);
 
 /// Environment for testing purposes only.
 pub static TEST_ENVIRONMENT_20: Environment = Environment::Test(Parameters::AleoTest20Chunks);

@@ -13,8 +13,19 @@ type ChunkSize = usize;
 type Curve = CurveKind;
 type NumberOfChunks = usize;
 type Power = usize;
+type CompressedInputs = UseCompression;
+type CompressedOutputs = UseCompression;
 
-pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);
+pub type Settings = (
+    ContributionMode,
+    ProvingSystem,
+    Curve,
+    Power,
+    BatchSize,
+    ChunkSize,
+    CompressedInputs,
+    CompressedOutputs,
+);
 
 #[derive(Debug, Clone)]
 pub enum Parameters {
@@ -22,6 +33,7 @@ pub enum Parameters {
     AleoOuter,
     AleoUniversal,
     AleoTest3Chunks,
+    AleoTest3ChunksNoCompression,
     AleoTest8Chunks,
     AleoTest20Chunks,
     AleoTestChunks(NumberOfChunks),
@@ -37,6 +49,7 @@ impl Parameters {
             Parameters::AleoOuter => Self::aleo_outer(),
             Parameters::AleoUniversal => Self::aleo_universal(),
             Parameters::AleoTest3Chunks => Self::aleo_test_3_chunks(),
+            Parameters::AleoTest3ChunksNoCompression => Self::aleo_test_3_chunks_no_compression(),
             Parameters::AleoTest8Chunks => Self::aleo_test_8_chunks(),
             Parameters::AleoTest20Chunks => Self::aleo_test_20_chunks(),
             Parameters::AleoTestChunks(number_of_chunks) => Self::aleo_test_chunks(number_of_chunks),
@@ -55,6 +68,8 @@ impl Parameters {
             Power::from(20_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(2048_usize),
+            UseCompression::No,
+            UseCompression::Yes,
         )
     }
 
@@ -66,6 +81,8 @@ impl Parameters {
             Power::from(21_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(8192_usize),
+            UseCompression::No,
+            UseCompression::Yes,
         )
     }
 
@@ -77,6 +94,8 @@ impl Parameters {
             Power::from(30_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(8192_usize),
+            UseCompression::No,
+            UseCompression::Yes,
         )
     }
 
@@ -88,6 +107,21 @@ impl Parameters {
             Power::from(8_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(170_usize),
+            UseCompression::No,
+            UseCompression::Yes,
+        )
+    }
+
+    fn aleo_test_3_chunks_no_compression() -> Settings {
+        (
+            ContributionMode::Chunked,
+            ProvingSystem::Groth16,
+            CurveKind::Bls12_377,
+            Power::from(8_usize),
+            BatchSize::from(64_usize),
+            ChunkSize::from(170_usize),
+            UseCompression::No,
+            UseCompression::No,
         )
     }
 
@@ -99,6 +133,8 @@ impl Parameters {
             Power::from(14_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(4095_usize),
+            UseCompression::No,
+            UseCompression::Yes,
         )
     }
 
@@ -110,6 +146,8 @@ impl Parameters {
             Power::from(14_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(1638_usize),
+            UseCompression::No,
+            UseCompression::Yes,
         )
     }
 
@@ -124,6 +162,8 @@ impl Parameters {
             Power::from(power),
             BatchSize::from(batch_size),
             chunk_size!(number_of_chunks, proving_system, power),
+            UseCompression::No,
+            UseCompression::Yes,
         )
     }
 
@@ -136,6 +176,8 @@ impl Parameters {
             *power,
             *batch_size,
             chunk_size!(number_of_chunks, proving_system, power),
+            UseCompression::No,
+            UseCompression::Yes,
         )
     }
 }
@@ -162,7 +204,7 @@ impl Environment {
     /// to run given a proof system, power and chunk size.
     ///
     pub fn number_of_chunks(&self) -> u64 {
-        let (_, proving_system, _, power, _, chunk_size) = match self {
+        let (_, proving_system, _, power, _, chunk_size, _, _) = match self {
             Environment::Test(parameters) => parameters.to_settings(),
             Environment::Development(parameters) => parameters.to_settings(),
             Environment::Production(parameters) => parameters.to_settings(),
@@ -176,12 +218,13 @@ impl Environment {
     /// By default, the coordinator returns `false` to minimize time
     /// spent by contributors on decompressing inputs.
     ///
-    pub const fn compressed_inputs(&self) -> UseCompression {
-        match self {
-            Environment::Test(_) => UseCompression::No,
-            Environment::Development(_) => UseCompression::No,
-            Environment::Production(_) => UseCompression::No,
-        }
+    pub fn compressed_inputs(&self) -> UseCompression {
+        let (_, _, _, _, _, _, compressed_inputs, _) = match self {
+            Environment::Test(parameters) => parameters.to_settings(),
+            Environment::Development(parameters) => parameters.to_settings(),
+            Environment::Production(parameters) => parameters.to_settings(),
+        };
+        compressed_inputs
     }
 
     ///
@@ -190,12 +233,13 @@ impl Environment {
     /// By default, the coordinator returns `true` to minimize time
     /// spent by the coordinator and contributors on uploading chunks.
     ///
-    pub const fn compressed_outputs(&self) -> UseCompression {
-        match self {
-            Environment::Test(_) => UseCompression::Yes,
-            Environment::Development(_) => UseCompression::Yes,
-            Environment::Production(_) => UseCompression::Yes,
-        }
+    pub fn compressed_outputs(&self) -> UseCompression {
+        let (_, _, _, _, _, _, _, compressed_outputs) = match self {
+            Environment::Test(parameters) => parameters.to_settings(),
+            Environment::Development(parameters) => parameters.to_settings(),
+            Environment::Production(parameters) => parameters.to_settings(),
+        };
+        compressed_outputs
     }
 
     ///
@@ -413,7 +457,7 @@ mod tests {
         let number_of_chunks = 3;
 
         let parameters = Parameters::AleoTestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let (_, _, _, power, _, chunk_size, _, _) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(10922_usize), chunk_size);
         assert_eq!(
@@ -427,7 +471,7 @@ mod tests {
         let number_of_chunks = 8;
 
         let parameters = Parameters::AleoTestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let (_, _, _, power, _, chunk_size, _, _) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(4095_usize), chunk_size);
         assert_eq!(
@@ -441,7 +485,7 @@ mod tests {
         let number_of_chunks = 20;
 
         let parameters = Parameters::AleoTestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let (_, _, _, power, _, chunk_size, _, _) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(1638_usize), chunk_size);
         assert_eq!(

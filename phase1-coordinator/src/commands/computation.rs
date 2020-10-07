@@ -45,7 +45,7 @@ impl Computation {
         let check_input_for_correctness = environment.check_input_for_correctness();
         // Execute computation on chunk.
         let result = panic::catch_unwind(|| {
-            let (_, _, curve, _, _, _) = settings;
+            let (_, _, curve, _, _, _, _, _) = settings;
             match curve {
                 CurveKind::Bls12_377 => contribute(
                     compressed_input,

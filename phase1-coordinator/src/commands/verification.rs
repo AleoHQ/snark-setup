@@ -65,7 +65,7 @@ impl Verification {
         let compressed_output = environment.compressed_outputs();
 
         // Execute ceremony verification on chunk.
-        let (_, _, curve, _, _, _) = settings.clone();
+        let (_, _, curve, _, _, _, _, _) = settings.clone();
         let result = panic::catch_unwind(|| {
             match curve {
                 CurveKind::Bls12_377 => transform_pok_and_correctness(

@@ -142,11 +142,18 @@ pub fn transform_pok_and_correctness<T: Engine + Sync>(
 
     if compress_new_challenge == contribution_is_compressed {
         println!("Don't need to recompress the contribution, copying the file without the public key...");
-        fs::copy(challenge_filename, new_challenge_filename)
+        fs::copy(response_filename, new_challenge_filename)
             .expect("Should have been able to copy the new challenge file");
-        let f = fs::File::open(new_challenge_filename).expect("Should have been able to open the new challenge file");
-        f.set_len((parameters.accumulator_size + parameters.public_key_size) as u64)
-            .expect("Should have been able to truncate the new challenge file");
+        let mut options = OpenOptions::new();
+        {
+            let f = options
+                .read(true)
+                .write(true)
+                .open(new_challenge_filename)
+                .expect("Should have been able to open the new challenge file");
+            f.set_len(parameters.accumulator_size as u64)
+                .expect("Should have been able to truncate the new challenge file");
+        }
 
         let new_challenge_reader = OpenOptions::new()
             .read(true)

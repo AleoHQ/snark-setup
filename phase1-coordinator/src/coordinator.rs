@@ -1275,80 +1275,82 @@ mod test {
 
     // TODO (howardwu): Update and finish this test to reflect new compressed output setting.
     fn coordinator_aggregation_test() -> anyhow::Result<()> {
-        clear_test_transcript();
+        for environment in [TEST_ENVIRONMENT_3.clone(), TEST_ENVIRONMENT_3_NO_COMPRESSION.clone()].iter() {
+            clear_test_transcript();
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone())?;
-        initialize_coordinator(&coordinator)?;
+            let coordinator = Coordinator::new(environment.clone())?;
+            initialize_coordinator(&coordinator)?;
 
-        // Run computation and verification on each contribution in each chunk.
-        let contributors = vec![
-            Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
-            Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
-        ];
+            // Run computation and verification on each contribution in each chunk.
+            let contributors = vec![
+                Lazy::force(&TEST_CONTRIBUTOR_ID).clone(),
+                Lazy::force(&TEST_CONTRIBUTOR_ID_2).clone(),
+            ];
 
-        let verifier = Lazy::force(&TEST_VERIFIER_ID);
+            let verifier = Lazy::force(&TEST_VERIFIER_ID);
 
-        // Iterate over all chunk IDs.
-        for chunk_id in 0..TEST_ENVIRONMENT_3.number_of_chunks() {
-            // As contribution ID 0 is initialized by the coordinator, iterate from
-            // contribution ID 1 up to the expected number of contributions.
-            for contribution_id in 1..coordinator.current_round()?.expected_num_contributions() {
-                let contributor = &contributors[contribution_id as usize - 1];
-                {
-                    // Acquire the lock as contributor.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, contributor.clone());
-                    if try_lock.is_err() {
-                        println!(
-                            "Failed to acquire lock as contributor {:?}\n{}",
-                            contributor.clone(),
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
-                        );
-                        try_lock?;
+            // Iterate over all chunk IDs.
+            for chunk_id in 0..environment.number_of_chunks() {
+                // As contribution ID 0 is initialized by the coordinator, iterate from
+                // contribution ID 1 up to the expected number of contributions.
+                for contribution_id in 1..coordinator.current_round()?.expected_num_contributions() {
+                    let contributor = &contributors[contribution_id as usize - 1];
+                    {
+                        // Acquire the lock as contributor.
+                        let try_lock = coordinator.try_lock_chunk(chunk_id, contributor.clone());
+                        if try_lock.is_err() {
+                            println!(
+                                "Failed to acquire lock as contributor {:?}\n{}",
+                                contributor.clone(),
+                                serde_json::to_string_pretty(&coordinator.current_round()?)?
+                            );
+                            try_lock?;
+                        }
+
+                        // Run computation as contributor.
+                        let contribute = coordinator.run_computation(chunk_id, contribution_id, &contributor);
+                        if contribute.is_err() {
+                            println!(
+                                "Failed to run computation as contributor {:?}\n{}",
+                                contributor.clone(),
+                                serde_json::to_string_pretty(&coordinator.current_round()?)?
+                            );
+                            contribute?;
+                        }
+
+                        // Add the contribution as the contributor.
+                        let contribute = coordinator.add_contribution(chunk_id, contributor.clone());
+                        if contribute.is_err() {
+                            println!(
+                                "Failed to add contribution as contributor {:?}\n{}",
+                                contributor.clone(),
+                                serde_json::to_string_pretty(&coordinator.current_round()?)?
+                            );
+                            contribute?;
+                        }
                     }
+                    {
+                        // Acquire the lock as the verifier.
+                        let try_lock = coordinator.try_lock_chunk(chunk_id, verifier.clone());
+                        if try_lock.is_err() {
+                            println!(
+                                "Failed to acquire lock as verifier {:?}\n{}",
+                                contributor.clone(),
+                                serde_json::to_string_pretty(&coordinator.current_round()?)?
+                            );
+                            try_lock?;
+                        }
 
-                    // Run computation as contributor.
-                    let contribute = coordinator.run_computation(chunk_id, contribution_id, &contributor);
-                    if contribute.is_err() {
-                        println!(
-                            "Failed to run computation as contributor {:?}\n{}",
-                            contributor.clone(),
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
-                        );
-                        contribute?;
-                    }
-
-                    // Add the contribution as the contributor.
-                    let contribute = coordinator.add_contribution(chunk_id, contributor.clone());
-                    if contribute.is_err() {
-                        println!(
-                            "Failed to add contribution as contributor {:?}\n{}",
-                            contributor.clone(),
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
-                        );
-                        contribute?;
-                    }
-                }
-                {
-                    // Acquire the lock as the verifier.
-                    let try_lock = coordinator.try_lock_chunk(chunk_id, verifier.clone());
-                    if try_lock.is_err() {
-                        println!(
-                            "Failed to acquire lock as verifier {:?}\n{}",
-                            contributor.clone(),
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
-                        );
-                        try_lock?;
-                    }
-
-                    // Run verification as the verifier.
-                    let verify = coordinator.verify_contribution(chunk_id, verifier.clone());
-                    if verify.is_err() {
-                        println!(
-                            "Failed to run verification as verifier {:?}\n{}",
-                            contributor.clone(),
-                            serde_json::to_string_pretty(&coordinator.current_round()?)?
-                        );
-                        verify?;
+                        // Run verification as the verifier.
+                        let verify = coordinator.verify_contribution(chunk_id, verifier.clone());
+                        if verify.is_err() {
+                            println!(
+                                "Failed to run verification as verifier {:?}\n{}",
+                                contributor.clone(),
+                                serde_json::to_string_pretty(&coordinator.current_round()?)?
+                            );
+                            verify?;
+                        }
                     }
                 }
             }
