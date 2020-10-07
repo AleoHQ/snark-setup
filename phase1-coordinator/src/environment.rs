@@ -5,6 +5,7 @@ use crate::{
 use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 use setup_utils::{CheckForCorrectness, UseCompression};
 
+use chrono::Duration;
 use rocket_cors::{AllowedHeaders, AllowedOrigins, Cors};
 use url::Url;
 
@@ -13,8 +14,19 @@ type ChunkSize = usize;
 type Curve = CurveKind;
 type NumberOfChunks = usize;
 type Power = usize;
+type LockTimeout = usize;
+type RoundTimeout = usize;
 
-pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);
+pub type Settings = (
+    ContributionMode,
+    ProvingSystem,
+    Curve,
+    Power,
+    BatchSize,
+    ChunkSize,
+    LockTimeout,
+    RoundTimeout,
+);
 
 #[derive(Debug, Clone)]
 pub enum Parameters {
@@ -55,6 +67,8 @@ impl Parameters {
             Power::from(20_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(2048_usize),
+            LockTimeout::from(10_usize),
+            RoundTimeout::from(100_usize),
         )
     }
 
@@ -66,6 +80,8 @@ impl Parameters {
             Power::from(21_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(8192_usize),
+            LockTimeout::from(10_usize),
+            RoundTimeout::from(100_usize),
         )
     }
 
@@ -77,6 +93,8 @@ impl Parameters {
             Power::from(30_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(8192_usize),
+            LockTimeout::from(10_usize),
+            RoundTimeout::from(100_usize),
         )
     }
 
@@ -88,6 +106,8 @@ impl Parameters {
             Power::from(8_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(170_usize),
+            LockTimeout::from(2_usize),
+            RoundTimeout::from(10_usize),
         )
     }
 
@@ -99,6 +119,8 @@ impl Parameters {
             Power::from(14_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(4095_usize),
+            LockTimeout::from(10_usize),
+            RoundTimeout::from(100_usize),
         )
     }
 
@@ -110,6 +132,8 @@ impl Parameters {
             Power::from(14_usize),
             BatchSize::from(64_usize),
             ChunkSize::from(1638_usize),
+            LockTimeout::from(10_usize),
+            RoundTimeout::from(100_usize),
         )
     }
 
@@ -124,6 +148,8 @@ impl Parameters {
             Power::from(power),
             BatchSize::from(batch_size),
             chunk_size!(number_of_chunks, proving_system, power),
+            LockTimeout::from(60_usize),
+            RoundTimeout::from(100_usize),
         )
     }
 
@@ -136,6 +162,8 @@ impl Parameters {
             *power,
             *batch_size,
             chunk_size!(number_of_chunks, proving_system, power),
+            LockTimeout::from(60_usize * power / 14),
+            RoundTimeout::from(100_usize),
         )
     }
 }
@@ -162,7 +190,7 @@ impl Environment {
     /// to run given a proof system, power and chunk size.
     ///
     pub fn number_of_chunks(&self) -> u64 {
-        let (_, proving_system, _, power, _, chunk_size) = match self {
+        let (_, proving_system, _, power, _, chunk_size, _, _) = match self {
             Environment::Test(parameters) => parameters.to_settings(),
             Environment::Development(parameters) => parameters.to_settings(),
             Environment::Production(parameters) => parameters.to_settings(),
@@ -273,6 +301,11 @@ impl Environment {
         round_directory!(self, Local, Remote, Remote, round_height)
     }
 
+    /// Returns the round backup directory for a given round height and tag from the coordinator.
+    pub fn round_backup_directory(&self, round_height: u64, tag: &str) -> String {
+        round_backup_directory!(self, Local, Remote, Remote, round_height, tag)
+    }
+
     /// Initializes the round directory for a given round height.
     pub fn round_directory_init(&self, round_height: u64) {
         round_directory_init!(self, Local, Remote, Remote, round_height)
@@ -286,6 +319,11 @@ impl Environment {
     /// Resets the round directory for a given round height, if permitted.
     pub fn round_directory_reset(&self, round_height: u64) {
         round_directory_reset!(self, Local, Remote, Remote, round_height)
+    }
+
+    /// Resets and backups the round directory for a given environment and round height.
+    pub fn round_directory_reset_and_backup(&self, round_height: u64, tag: &str) {
+        round_directory_reset_and_backup!(self, Local, Remote, Remote, round_height, tag)
     }
 
     /// Resets the entire round directory for all rounds, if permitted.
@@ -389,6 +427,30 @@ impl Environment {
         }
     }
 
+    ///
+    /// Returns the lock timeout of this environment.
+    ///
+    pub fn lock_timeout(&self) -> Duration {
+        let (_, _, _, _, _, _, lock_timeout, _) = match self {
+            Environment::Test(parameters) => parameters.to_settings(),
+            Environment::Development(parameters) => parameters.to_settings(),
+            Environment::Production(parameters) => parameters.to_settings(),
+        };
+        Duration::seconds(lock_timeout as i64)
+    }
+
+    ///
+    /// Returns the round timeout of this environment.
+    ///
+    pub fn round_timeout(&self) -> Duration {
+        let (_, _, _, _, _, _, _, round_timeout) = match self {
+            Environment::Test(parameters) => parameters.to_settings(),
+            Environment::Development(parameters) => parameters.to_settings(),
+            Environment::Production(parameters) => parameters.to_settings(),
+        };
+        Duration::seconds(round_timeout as i64)
+    }
+
     /// Returns the version number of the coordinator.
     pub const fn version(&self) -> u64 {
         match self {
@@ -413,7 +475,7 @@ mod tests {
         let number_of_chunks = 3;
 
         let parameters = Parameters::AleoTestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let (_, _, _, power, _, chunk_size, _, _) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(10922_usize), chunk_size);
         assert_eq!(
@@ -427,7 +489,7 @@ mod tests {
         let number_of_chunks = 8;
 
         let parameters = Parameters::AleoTestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let (_, _, _, power, _, chunk_size, _, _) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(4095_usize), chunk_size);
         assert_eq!(
@@ -441,7 +503,7 @@ mod tests {
         let number_of_chunks = 20;
 
         let parameters = Parameters::AleoTestChunks(number_of_chunks);
-        let (_, _, _, power, _, chunk_size) = parameters.to_settings();
+        let (_, _, _, power, _, chunk_size, _, _) = parameters.to_settings();
         assert_eq!(Power::from(14_usize), power);
         assert_eq!(ChunkSize::from(1638_usize), chunk_size);
         assert_eq!(

@@ -45,16 +45,51 @@ impl Locator for Local {
         // If this is a test environment, attempt to clear it for the coordinator.
         let directory = Self::round_directory(environment, round_height);
         let path = Path::new(&directory);
-        match environment {
-            Environment::Test(_) => {
-                if path.exists() {
-                    warn!("Coordinator is clearing {:?}", &path);
-                    std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
-                    warn!("Coordinator cleared {:?}", &path);
-                }
-            }
-            Environment::Development(_) => warn!("Coordinator is attempting to clear {:?} in development mode", &path),
-            Environment::Production(_) => warn!("Coordinator is attempting to clear {:?} in production mode", &path),
+        let mode_str = match environment {
+            Environment::Test(_) => "test",
+            Environment::Development(_) => "development",
+            Environment::Production(_) => "production",
+        };
+        if path.exists() {
+            warn!("Coordinator is clearing {:?} in {} mode", &path, mode_str);
+            std::fs::remove_dir_all(&path).expect("Unable to reset round directory");
+            warn!("Coordinator cleared {:?} in {} mode", &path, mode_str);
+        }
+    }
+
+    /// Returns the round backup directory for a given round height and tag from the coordinator.
+    fn round_backup_directory(environment: &Environment, round_height: u64, tag: &str) -> String
+    where
+        Self: Sized,
+    {
+        format!("{}_{}", Self::round_directory(environment, round_height), tag)
+    }
+
+    /// Resets and backups the round directory for a given environment and round height.
+    fn round_directory_reset_and_backup(environment: &Environment, round_height: u64, tag: &str) {
+        // If this is a test environment, attempt to clear it for the coordinator.
+        let directory = Self::round_directory(environment, round_height);
+        let path = Path::new(&directory);
+        let backup_directory = Self::round_backup_directory(environment, round_height, tag);
+        let backup_path = Path::new(&backup_directory);
+        let mode_str = match environment {
+            Environment::Test(_) => "test",
+            Environment::Development(_) => "development",
+            Environment::Production(_) => "production",
+        };
+        if backup_path.exists() {
+            warn!("Backup path {} already exists", backup_directory);
+        }
+        if path.exists() {
+            warn!(
+                "Coordinator is backing up {:?} to {:?} in {} mode",
+                &path, &backup_path, mode_str
+            );
+            std::fs::rename(&path, &backup_path).expect("Unable to backup round directory");
+            warn!(
+                "Coordinator backed up {:?} to {:?} in {} mode",
+                &path, &backup_path, mode_str
+            );
         }
     }
 

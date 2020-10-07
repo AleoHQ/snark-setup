@@ -19,6 +19,14 @@ impl Locator for Remote {
         }
     }
 
+    /// Returns the round backup directory for a given round height and tag from the coordinator.
+    fn round_backup_directory(environment: &Environment, round_height: u64, tag: &str) -> String
+    where
+        Self: Sized,
+    {
+        format!("{}/backup/{}", Self::round_directory(environment, round_height), tag)
+    }
+
     /// Initializes the round directory for a given environment and round height.
     fn round_directory_init(_environment: &Environment, _round_height: u64)
     where
@@ -39,6 +47,11 @@ impl Locator for Remote {
 
     /// Resets the round directory for a given environment and round height.
     fn round_directory_reset(_environment: &Environment, _round_height: u64) {
+        unimplemented!()
+    }
+
+    /// Resets and backups the round directory for a given environment and round height.
+    fn round_directory_reset_and_backup(_environment: &Environment, _round_height: u64, _tag: &str) {
         unimplemented!()
     }
 

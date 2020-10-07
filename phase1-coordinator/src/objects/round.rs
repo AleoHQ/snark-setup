@@ -122,6 +122,12 @@ impl Round {
         self.height
     }
 
+    /// Returns the time the round started at.
+    #[inline]
+    pub fn started_at(&self) -> &Option<DateTime<Utc>> {
+        &self.started_at
+    }
+
     /// Returns the number of contributors authorized for this round.
     #[inline]
     pub fn number_of_contributors(&self) -> u64 {

@@ -6,6 +6,11 @@ pub trait Locator {
     where
         Self: Sized;
 
+    /// Returns the round backup directory for a given round height and tag from the coordinator.
+    fn round_backup_directory(environment: &Environment, round_height: u64, tag: &str) -> String
+    where
+        Self: Sized;
+
     /// Initializes the round directory for a given environment and round height.
     fn round_directory_init(environment: &Environment, round_height: u64)
     where
@@ -19,6 +24,11 @@ pub trait Locator {
 
     /// Resets the round directory for a given environment and round height.
     fn round_directory_reset(environment: &Environment, round_height: u64)
+    where
+        Self: Sized;
+
+    /// Resets and backups the round directory for a given environment and round height.
+    fn round_directory_reset_and_backup(environment: &Environment, round_height: u64, tag: &str)
     where
         Self: Sized;
 

@@ -3,6 +3,7 @@ use crate::{
     CoordinatorError,
 };
 
+use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_aux::prelude::*;
@@ -14,7 +15,8 @@ use tracing::trace;
 pub struct Chunk {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     chunk_id: u64,
-    lock_holder: Option<Participant>,
+    #[serde_diff(opaque)]
+    lock_holder: Option<(Participant, DateTime<Utc>)>, // (Participant, UNIX timestamp)
     #[serde_diff(opaque)]
     contributions: Vec<Contribution>,
 }
@@ -52,7 +54,7 @@ impl Chunk {
     /// Returns the lock holder of this chunk, if the chunk is locked.
     /// Otherwise, returns `None`.
     #[inline]
-    pub fn lock_holder(&self) -> &Option<Participant> {
+    pub fn lock_holder(&self) -> &Option<(Participant, DateTime<Utc>)> {
         &self.lock_holder
     }
 
@@ -74,7 +76,7 @@ impl Chunk {
     pub fn is_locked_by(&self, participant: &Participant) -> bool {
         // Retrieve the current lock holder, or return `false` if the chunk is unlocked.
         match &self.lock_holder {
-            Some(lock_holder) => *lock_holder == *participant,
+            Some(lock_holder) => lock_holder.0 == *participant,
             None => false,
         }
     }
@@ -294,7 +296,7 @@ impl Chunk {
         }
 
         // Set the lock holder as the participant.
-        self.lock_holder = Some(participant);
+        self.lock_holder = Some((participant, Utc::now()));
         Ok(())
     }
 

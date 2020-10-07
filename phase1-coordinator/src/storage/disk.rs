@@ -75,6 +75,14 @@ impl Storage for Disk {
         true
     }
 
+    /// Stores an instance of `Disk`.
+    /// If successful, returns `true`. Otherwise, returns `false`.
+    #[inline]
+    fn save_backup(&mut self, _tag: &str) -> bool {
+        // TODO (howardwu): Fix storage key and value serialization before proceeding.
+        true
+    }
+
     /// Returns the value reference for a given key from storage, if it exists.
     #[inline]
     fn get(&self, key: &Key) -> Option<Value> {

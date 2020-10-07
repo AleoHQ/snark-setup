@@ -5,7 +5,7 @@ macro_rules! phase1_chunked_parameters {
     ($curve:ident, $settings:ident, $chunk_id:ident) => {{
         use phase1::Phase1Parameters;
 
-        let (contribution_mode, proving_system, _, power, batch_size, chunk_size) = $settings;
+        let (contribution_mode, proving_system, _, power, batch_size, chunk_size, _, _) = $settings;
         Phase1Parameters::<$curve>::new_chunk(
             contribution_mode,
             $chunk_id as usize,
@@ -24,7 +24,7 @@ macro_rules! phase1_full_parameters {
     ($curve:ident, $settings:ident) => {{
         use phase1::Phase1Parameters;
 
-        let (_, proving_system, _, power, batch_size, _) = $settings;
+        let (_, proving_system, _, power, batch_size, _, _, _) = $settings;
         Phase1Parameters::<$curve>::new_full(proving_system, power, batch_size)
     }};
 }
@@ -118,6 +118,21 @@ macro_rules! round_directory {
     }};
 }
 
+/// Returns the round backup directory using a locator that is determined based
+/// on the environment the coordinator is operating in and the tag.
+#[macro_export]
+macro_rules! round_backup_directory {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $tag:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::round_backup_directory($env, $round_height, $tag),
+            Environment::Development(_) => $l2::round_backup_directory($env, $round_height, $tag),
+            Environment::Production(_) => $l3::round_backup_directory($env, $round_height, $tag),
+        }
+    }};
+}
+
 /// Initializes the round directory for a given round height using a locator that is
 /// determined based on the environment the coordinator is operating in.
 #[macro_export]
@@ -159,6 +174,21 @@ macro_rules! round_directory_reset {
             Environment::Test(_) => $l1::round_directory_reset($env, $round_height),
             Environment::Development(_) => $l2::round_directory_reset($env, $round_height),
             Environment::Production(_) => $l3::round_directory_reset($env, $round_height),
+        }
+    }};
+}
+
+/// Resets and backup the round directory for a given round height if permitted using a locator
+/// that is determined based on the environment the coordinator is operating in and the tag.
+#[macro_export]
+macro_rules! round_directory_reset_and_backup {
+    ($env:ident, $l1:ident, $l2:ident, $l3:ident, $round_height:ident, $tag:ident) => {{
+        use crate::locators::*;
+
+        match $env {
+            Environment::Test(_) => $l1::round_directory_reset_and_backup($env, $round_height, $tag),
+            Environment::Development(_) => $l2::round_directory_reset_and_backup($env, $round_height, $tag),
+            Environment::Production(_) => $l3::round_directory_reset_and_backup($env, $round_height, $tag),
         }
     }};
 }

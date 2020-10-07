@@ -36,7 +36,7 @@ impl Initialization {
         let compressed_input = environment.compressed_inputs();
         // Execute ceremony initialization on chunk.
         let result = panic::catch_unwind(|| {
-            let (_, _, curve, _, _, _) = settings;
+            let (_, _, curve, _, _, _, _, _) = settings;
             match curve {
                 CurveKind::Bls12_377 => new_challenge(
                     compressed_input,

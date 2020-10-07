@@ -29,6 +29,14 @@ impl Storage for InMemory {
         true
     }
 
+    /// Stores an instance of `InMemory` for backup, in case of failure.
+    /// If successful, returns `true`. Otherwise, returns `false`.
+    #[inline]
+    fn save_backup(&mut self, _tag: &str) -> bool {
+        // As this storage is in memory, we can always return `true`.
+        true
+    }
+
     /// Returns the value reference for a given key from storage, if it exists.
     #[inline]
     fn get(&self, key: &Key) -> Option<Value> {

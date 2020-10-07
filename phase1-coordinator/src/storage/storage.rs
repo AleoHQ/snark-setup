@@ -29,6 +29,10 @@ pub trait Storage: Send + Sync {
     /// If successful, returns `true`. Otherwise, returns `false`.
     fn save(&mut self) -> bool;
 
+    /// Stores an instance of `Storage` for backup, in case of failure.
+    /// If successful, returns `true`. Otherwise, returns `false`.
+    fn save_backup(&mut self, tag: &str) -> bool;
+
     /// Returns the value for a given key from storage, if it exists.
     fn get(&self, key: &Key) -> Option<Value>;
 
