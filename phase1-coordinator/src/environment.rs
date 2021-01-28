@@ -11,10 +11,15 @@ use serde::{Deserialize, Serialize};
 use tracing::Level;
 use url::Url;
 
+/// Used in [Phase1Parameters::new_chunk()](phase1::objects::parameters::Phase1Parameters::new()).
+/// Will cause a panic if set to 0.
 type BatchSize = usize;
+/// Used in [Phase1Parameters::new_chunk()](phase1::objects::parameters::Phase1Parameters::new()).
 type ChunkSize = usize;
 type Curve = CurveKind;
+/// Used in [Phase1Parameters::new_chunk()](phase1::objects::parameters::Phase1Parameters::new()).
 type NumberOfChunks = usize;
+/// Used in [Phase1Parameters::new_chunk()](phase1::objects::parameters::Phase1Parameters::new()).
 type Power = usize;
 
 pub type Settings = (ContributionMode, ProvingSystem, Curve, Power, BatchSize, ChunkSize);

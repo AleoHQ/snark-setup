@@ -12,7 +12,10 @@ use phase1::{helpers::CurveKind, ContributionMode, ProvingSystem};
 
 use rand::RngCore;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+
 use std::{collections::HashSet, panic};
+
+pub mod proptests;
 
 #[inline]
 fn create_contributor(id: &str) -> (Participant, SigningKey, Seed) {

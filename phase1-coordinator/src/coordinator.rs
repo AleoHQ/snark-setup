@@ -6,6 +6,7 @@ use crate::{
     objects::{participant::*, ContributionFileSignature, Round},
     storage::{Locator, Object, Storage, StorageLock},
 };
+use anyhow::Context;
 use setup_utils::calculate_hash;
 
 #[cfg(not(test))]
@@ -336,8 +337,15 @@ impl Coordinator {
     }
 
     ///
-    /// Runs a set of operations to update the coordinator state to reflect
-    /// newly finished, dropped, or banned participants.
+    /// Runs a set of operations to update the coordinator state to
+    /// reflect newly finished, dropped, or banned participants.
+    ///
+    /// Every round the queue of participants is cleared, and in order
+    /// to progress onto the next round, new contributors and
+    /// verifiers need to be added to the queue again (via
+    /// [Coordinator::add_to_queue()]). The same participants are
+    /// allowed to participate in multiple rounds, but this is not
+    /// considered beneficial for the process.
     ///
     #[inline]
     pub fn update(&self) -> Result<(), CoordinatorError> {
@@ -2298,7 +2306,14 @@ impl Coordinator {
         let (_chunk_id, _previous_response, _challenge, response) = self.try_lock(contributor)?;
         let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response)?;
 
-        debug!("Computing contributions for round {} chunk {}", round_height, chunk_id);
+        println!(
+            "Computing contributions for round {} chunk {} contribution {}, contributor {}",
+            round_height, chunk_id, contribution_id, contributor
+        );
+        debug!(
+            "Computing contributions for round {} chunk {} contribution {}",
+            round_height, chunk_id, contribution_id
+        );
         self.run_computation(
             round_height,
             chunk_id,
@@ -2306,9 +2321,34 @@ impl Coordinator {
             contributor,
             contributor_signing_key,
             contributor_seed,
-        )?;
-        let _response = self.try_contribute(contributor, chunk_id)?;
-        debug!("Computed contributions for round {} chunk {}", round_height, chunk_id);
+        )
+        .map_err(anyhow::Error::from)
+        .with_context(|| {
+            format!(
+                "Error while computing contributor {} contributions for round {} chunk {} contribution {}",
+                contributor, round_height, chunk_id, contribution_id
+            )
+        })?;
+
+        println!(
+            "Trying to add contributions for round {} chunk {} contribution {}, contributor {}",
+            round_height, chunk_id, contribution_id, contributor
+        );
+
+        let _response = self
+            .try_contribute(contributor, chunk_id)
+            .map_err(anyhow::Error::from)
+            .with_context(|| {
+                format!(
+                    "Error while trying to add contributor {} contribution for round {} chunk {} contribution {}",
+                    contributor, round_height, chunk_id, contribution_id
+                )
+            })?;
+
+        debug!(
+            "Computed contributions for round {} chunk {} contribution {}",
+            round_height, chunk_id, contribution_id
+        );
         Ok(())
     }
 
@@ -2318,10 +2358,26 @@ impl Coordinator {
         let (round_height, chunk_id, contribution_id, _) = self.parse_contribution_file_locator(&response)?;
 
         debug!("Running verification for round {} chunk {}", round_height, chunk_id);
-        let _next_challenge =
-            self.run_verification(round_height, chunk_id, contribution_id, &verifier, verifier_signing_key)?;
-        self.try_verify(&verifier, chunk_id)?;
-        debug!("Running verification for round {} chunk {}", round_height, chunk_id);
+        let _next_challenge = self
+            .run_verification(round_height, chunk_id, contribution_id, &verifier, verifier_signing_key)
+            .map_err(anyhow::Error::from)
+            .with_context(|| {
+                format!(
+                    "Error while running verification for round {} chunk {}",
+                    round_height, chunk_id
+                )
+            })?;
+
+        self.try_verify(&verifier, chunk_id)
+            .map_err(anyhow::Error::from)
+            .with_context(|| {
+                format!(
+                    "Error while trying to add verifier {} verification for round {} chunk {}",
+                    verifier, round_height, chunk_id
+                )
+            })?;
+
+        debug!("Completed verification for round {} chunk {}", round_height, chunk_id);
         Ok(())
     }
 

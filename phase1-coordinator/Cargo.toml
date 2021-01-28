@@ -44,6 +44,8 @@ url = { version = "1.0" }
 function_name = { version = "0.2.0" }
 lazy_static = { version = "1.4.0" }
 once_cell = { version = "1.5.2" }
+proptest = { version = "0.10" }
+proptest-derive = { version = "0.2" }
 serial_test = { version = "0.5" }
 
 [features]
