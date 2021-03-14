@@ -1,8 +1,9 @@
 use crate::{
     authentication::Dummy,
     commands::{Seed, SigningKey, SEED_LENGTH},
-    coordinator_state::Task,
+    coordinator_state::{ParticipantInfo, Task},
     environment::{Parameters, Testing},
+    storage::{Locator, Object},
     testing::prelude::*,
     Coordinator,
     Participant,
@@ -1401,6 +1402,370 @@ fn try_lock_blocked_test() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Test that contributor/verifier `completed_tasks` are removed/moved
+/// when a participant is dropped. Tests that the tasks declared in
+/// the state file are updated correctly when that happens.
+fn drop_contributor_state_file_updated_test() -> anyhow::Result<()> {
+    let parameters = Parameters::Custom((
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let environment = initialize_test_environment_with_debug(&Testing::from(parameters).into());
+    let number_of_chunks = environment.number_of_chunks() as usize;
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let storage = coordinator.storage();
+
+    {
+        let read = storage.read().expect("unable to obtain read lock on storage");
+        assert!(read.exists(&Locator::CoordinatorState));
+        assert!(read.get(&Locator::CoordinatorState).is_ok());
+    }
+
+    // Add a contributor and verifier to the queue.
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (contributor2, contributor_signing_key2, seed2) = create_contributor("2");
+    let (verifier, verifier_signing_key) = create_verifier("1");
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(contributor2.clone(), 9)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+
+    // Check state in the coordinator.
+    {
+        assert!(coordinator.current_contributor_info(&contributor1)?.is_none());
+        assert!(coordinator.current_contributor_info(&contributor2)?.is_none());
+        assert!(coordinator.current_verifier_info(&verifier)?.is_none());
+    }
+
+    // Check state in the storage.
+    {
+        let coordinator_state = match storage
+            .read()
+            .expect("unable to obtain read lock on storage")
+            .get(&Locator::CoordinatorState)?
+        {
+            Object::CoordinatorState(state) => state,
+            _ => panic!("unexpected object type"),
+        };
+        assert!(coordinator_state.current_contributor_info(&contributor1)?.is_none());
+        assert!(coordinator_state.current_contributor_info(&contributor2)?.is_none());
+        assert!(coordinator_state.current_verifier_info(&verifier)?.is_none());
+    }
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    let (contributor1_n_tasks, contributor2_n_tasks) = {
+        let coordinator_state = match storage
+            .read()
+            .expect("unable to obtain read lock on storage")
+            .get(&Locator::CoordinatorState)?
+        {
+            Object::CoordinatorState(state) => state,
+            _ => panic!("unexpected object type"),
+        };
+
+        let contributor1_info = coordinator
+            .current_contributor_info(&contributor1)?
+            .expect("expected contributor1 to have info now that it is a current contributor in round 1");
+
+        // Check the coordinator state matches what is in storage.
+        assert_eq!(
+            &contributor1_info,
+            coordinator_state
+                .current_contributor_info(&contributor1)?
+                .expect("expected contributor1 to have info now that it is a current contributor in round 1")
+        );
+
+        assert!(!contributor1_info.assigned_tasks().is_empty());
+        assert!(contributor1_info.pending_tasks().is_empty());
+        assert!(contributor1_info.completed_tasks().is_empty());
+        assert!(contributor1_info.disposing_tasks().is_empty());
+        assert!(contributor1_info.disposed_tasks().is_empty());
+
+        let contributor2_info = coordinator
+            .current_contributor_info(&contributor2)?
+            .expect("expected contributor2 to have info now that it is a current contributor in round 1");
+
+        // Check the coordinator state matches what is in storage.
+        assert_eq!(
+            &contributor2_info,
+            coordinator_state
+                .current_contributor_info(&contributor2)?
+                .expect("expected contributor2 to have info now that it is a current contributor in round 1")
+        );
+
+        assert!(!contributor2_info.assigned_tasks().is_empty());
+        assert!(contributor2_info.pending_tasks().is_empty());
+        assert!(contributor2_info.completed_tasks().is_empty());
+        assert!(contributor2_info.disposing_tasks().is_empty());
+        assert!(contributor2_info.disposed_tasks().is_empty());
+
+        let verifier_info = coordinator
+            .current_verifier_info(&verifier)?
+            .expect("expected verifier to have info now that it is a verifier in round 1");
+
+        // Check the coordinator state matches what is in storage.
+        assert_eq!(
+            &verifier_info,
+            coordinator_state
+                .current_verifier_info(&verifier)?
+                .expect("expected verifier to have info now that it is a current verifier in round 1")
+        );
+
+        // No contributions yet, so nothing to verify.
+        assert!(verifier_info.assigned_tasks().is_empty());
+        assert!(verifier_info.pending_tasks().is_empty());
+        assert!(verifier_info.completed_tasks().is_empty());
+        assert!(verifier_info.disposing_tasks().is_empty());
+        assert!(verifier_info.disposed_tasks().is_empty());
+
+        (
+            contributor1_info.assigned_tasks().len(),
+            contributor2_info.assigned_tasks().len(),
+        )
+    };
+
+    // Contribute and verify up to the penultimate chunk.
+    for i in 0..(number_of_chunks - 1) {
+        coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+        coordinator.contribute(&contributor2, &contributor_signing_key2, &seed2)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+        coordinator.verify(&verifier, &verifier_signing_key)?;
+
+        // Do some checks after the first chunk.
+        if i == 0 {
+            let coordinator_state = match storage
+                .read()
+                .expect("unable to obtain read lock on storage")
+                .get(&Locator::CoordinatorState)?
+            {
+                Object::CoordinatorState(state) => state,
+                _ => panic!("unexpected object type"),
+            };
+
+            let contributor1_info = coordinator
+                .current_contributor_info(&contributor1)?
+                .expect("expected contributor1 to have info now that it is a current contributor in round 1");
+
+            // Check the coordinator state matches what is in storage.
+            assert_eq!(
+                &contributor1_info,
+                coordinator_state
+                    .current_contributor_info(&contributor1)?
+                    .expect("expected contributor1 to have info now that it is a current contributor in round 1")
+            );
+
+            assert!(!contributor1_info.assigned_tasks().is_empty());
+            assert!(contributor1_info.pending_tasks().is_empty());
+            // Completed one contribution task.
+            assert_eq!(1, contributor1_info.completed_tasks().len());
+            assert!(contributor1_info.disposing_tasks().is_empty());
+            assert!(contributor1_info.disposed_tasks().is_empty());
+
+            let contributor2_info = coordinator
+                .current_contributor_info(&contributor2)?
+                .expect("expected contributor2 to have info now that it is a current contributor in round 1");
+
+            // Check the coordinator state matches what is in storage.
+            assert_eq!(
+                &contributor2_info,
+                coordinator_state
+                    .current_contributor_info(&contributor2)?
+                    .expect("expected contributor2 to have info now that it is a current contributor in round 1")
+            );
+
+            assert!(!contributor2_info.assigned_tasks().is_empty());
+            assert!(contributor2_info.pending_tasks().is_empty());
+            // Completed one contribution task.
+            assert_eq!(1, contributor2_info.completed_tasks().len());
+            assert!(contributor2_info.disposing_tasks().is_empty());
+            assert!(contributor2_info.disposed_tasks().is_empty());
+
+            let verifier_info = coordinator
+                .current_verifier_info(&verifier)?
+                .expect("expected verifier to have info now that it is a verifier in round 1");
+
+            // Check the coordinator state matches what is in storage.
+            assert_eq!(
+                &verifier_info,
+                coordinator_state
+                    .current_verifier_info(&verifier)?
+                    .expect("expected verifier to have info now that it is a current verifier in round 1")
+            );
+
+            // No contributions yet, so nothing to verify.
+            assert!(verifier_info.assigned_tasks().is_empty());
+            assert!(verifier_info.pending_tasks().is_empty());
+            // Completed two verification tasks of the two contributions.
+            assert_eq!(2, verifier_info.completed_tasks().len());
+            assert!(verifier_info.disposing_tasks().is_empty());
+            assert!(verifier_info.disposed_tasks().is_empty());
+        }
+    }
+
+    {
+        let coordinator_state = match storage
+            .read()
+            .expect("unable to obtain read lock on storage")
+            .get(&Locator::CoordinatorState)?
+        {
+            Object::CoordinatorState(state) => state,
+            _ => panic!("unexpected object type"),
+        };
+
+        let contributor1_info = coordinator
+            .current_contributor_info(&contributor1)?
+            .expect("expected contributor1 to have info now that it is a current contributor in round 1");
+
+        // Check the coordinator state matches what is in storage.
+        assert_eq!(
+            &contributor1_info,
+            coordinator_state
+                .current_contributor_info(&contributor1)?
+                .expect("expected contributor1 to have info now that it is a current contributor in round 1")
+        );
+
+        assert_eq!(1, contributor1_info.assigned_tasks().len());
+        assert!(contributor1_info.pending_tasks().is_empty());
+        assert_eq!(contributor1_n_tasks - 1, contributor1_info.completed_tasks().len());
+        assert!(contributor1_info.disposing_tasks().is_empty());
+        assert!(contributor1_info.disposed_tasks().is_empty());
+
+        let contributor2_info = coordinator
+            .current_contributor_info(&contributor2)?
+            .expect("expected contributor2 to have info now that it is a current contributor in round 1");
+
+        // Check the coordinator state matches what is in storage.
+        assert_eq!(
+            &contributor2_info,
+            coordinator_state
+                .current_contributor_info(&contributor2)?
+                .expect("expected contributor2 to have info now that it is a current contributor in round 1")
+        );
+
+        assert_eq!(1, contributor2_info.assigned_tasks().len());
+        assert!(contributor2_info.pending_tasks().is_empty());
+        assert_eq!(contributor2_n_tasks - 1, contributor2_info.completed_tasks().len());
+        assert!(contributor2_info.disposing_tasks().is_empty());
+        assert!(contributor2_info.disposed_tasks().is_empty());
+
+        let verifier_info = coordinator
+            .current_verifier_info(&verifier)?
+            .expect("expected verifier to have info now that it is a verifier in round 1");
+
+        // Check the coordinator state matches what is in storage.
+        assert_eq!(
+            &verifier_info,
+            coordinator_state
+                .current_verifier_info(&verifier)?
+                .expect("expected verifier to have info now that it is a current verifier in round 1")
+        );
+
+        assert!(verifier_info.pending_tasks().is_empty());
+        assert!(!verifier_info.completed_tasks().is_empty());
+        assert!(verifier_info.disposing_tasks().is_empty());
+        assert!(verifier_info.disposed_tasks().is_empty());
+    }
+
+    assert!(coordinator.is_current_contributor(&contributor1));
+    assert!(coordinator.is_current_contributor(&contributor2));
+    assert!(coordinator.is_current_verifier(&verifier));
+
+    // Drop the contributor from the current round.
+    let locators = coordinator.drop_participant(&contributor1)?;
+    assert_eq!(&number_of_chunks - 1, locators.len());
+
+    assert!(!coordinator.is_current_contributor(&contributor1));
+    assert!(coordinator.is_current_contributor(&contributor2));
+    assert!(coordinator.is_current_verifier(&verifier));
+
+    {
+        let coordinator_state = match storage
+            .read()
+            .expect("unable to obtain read lock on storage")
+            .get(&Locator::CoordinatorState)?
+        {
+            Object::CoordinatorState(state) => state,
+            _ => panic!("unexpected object type"),
+        };
+
+        // There is now no current contributor1
+        assert!(coordinator.current_contributor_info(&contributor1)?.is_none());
+
+        // Check the coordinator state matches what is in storage.
+        assert!(coordinator_state.current_contributor_info(&contributor1)?.is_none());
+
+        let dropped_participant1_info = coordinator_state
+            .dropped_contributors()
+            .into_iter()
+            .find(|contributor_info: &ParticipantInfo| contributor_info.participant() == contributor1)
+            .expect("expected participant1 to be present in the list of dropped contributors");
+
+        assert!(dropped_participant1_info.is_dropped());
+
+        let contributor2_info = coordinator
+            .current_contributor_info(&contributor2)?
+            .expect("expected contributor2 to have info now that it is a current contributor in round 1");
+
+        // Check the coordinator state matches what is in storage.
+        assert_eq!(
+            &contributor2_info,
+            coordinator_state
+                .current_contributor_info(&contributor2)?
+                .expect("expected contributor2 to have info now that it is a current contributor in round 1")
+        );
+
+        // There are now more assigned tasks than before the participant drop.
+        assert!(1 < contributor2_info.assigned_tasks().len());
+        assert!(contributor2_info.pending_tasks().is_empty());
+        // There are now less completed tasks than before the participant drop.
+        assert!(contributor2_n_tasks - 1 > contributor2_info.completed_tasks().len());
+        assert!(contributor2_info.disposing_tasks().is_empty());
+        // Some of the tasks that depended on participant1's
+        // contributions have been disposed.
+        assert!(!contributor2_info.disposed_tasks().is_empty());
+
+        let verifier_info = coordinator
+            .current_verifier_info(&verifier)?
+            .expect("expected verifier to have info now that it is a verifier in round 1");
+
+        // Check the coordinator state matches what is in storage.
+        assert_eq!(
+            &verifier_info,
+            coordinator_state
+                .current_verifier_info(&verifier)?
+                .expect("expected verifier to have info now that it is a current verifier in round 1")
+        );
+
+        assert!(verifier_info.pending_tasks().is_empty());
+        assert!(!verifier_info.completed_tasks().is_empty());
+        assert!(verifier_info.disposing_tasks().is_empty());
+        // Some of the tasks that depended on participant1's
+        // contributions have been disposed.
+        assert!(!verifier_info.disposed_tasks().is_empty());
+    }
+
+    // Print the coordinator state.
+    let state = coordinator.state();
+    debug!("{}", serde_json::to_string_pretty(&state)?);
+    assert_eq!(1, state.current_round_height());
+
+    debug!("{}", serde_json::to_string_pretty(&coordinator.current_round()?)?);
+
+    Ok(())
+}
+
 #[test]
 #[serial]
 fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
@@ -1640,6 +2005,13 @@ fn test_coordinator_drop_multiple_contributors() {
 #[serial]
 fn test_try_lock_blocked() {
     test_report!(try_lock_blocked_test);
+}
+
+#[test]
+#[named]
+#[serial]
+fn test_drop_contributor_state_file_updated() {
+    test_report!(drop_contributor_state_file_updated_test);
 }
 
 #[test]

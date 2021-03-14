@@ -30,7 +30,7 @@ pub(super) enum CoordinatorStatus {
     Rollback,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ParticipantInfo {
     /// The ID of the participant.
     id: Participant,
@@ -89,6 +89,13 @@ impl ParticipantInfo {
     }
 
     ///
+    /// Gets the partipant that this information is about.
+    ///
+    pub fn participant(&self) -> Participant {
+        self.id.clone()
+    }
+
+    ///
     /// Returns the set of chunk IDs that this participant is computing.
     ///
     pub fn locked_chunks(&self) -> &HashSet<u64> {
@@ -134,7 +141,7 @@ impl ParticipantInfo {
     /// Returns `true` if the participant is dropped from the current round.
     ///
     #[inline]
-    fn is_dropped(&self) -> bool {
+    pub(crate) fn is_dropped(&self) -> bool {
         // Check that the participant has not already finished the round.
         if self.is_finished() {
             return false;
@@ -1044,11 +1051,60 @@ impl CoordinatorState {
     }
 
     ///
+    /// Returns a reference to the current [ParticipantInfo]
+    /// associated with the specified `contributor`.
+    ///
+    /// Returns `None` if the specified `contributor` has no associated
+    /// [ParticipantInfo].
+    ///
+    /// Expects `contributor` to be a [Participant::Contributor], will
+    /// return a [CoordinatorError::ExpectedContributor] if not.
+    ///
+    #[inline]
+    pub fn current_contributor_info(
+        &self,
+        contributor: &Participant,
+    ) -> Result<Option<&ParticipantInfo>, CoordinatorError> {
+        if !contributor.is_contributor() {
+            return Err(CoordinatorError::ExpectedContributor);
+        }
+
+        Ok(self.current_contributors.get(contributor))
+    }
+
+    ///
     /// Returns a list of the contributors currently in the round.
     ///
     #[inline]
     pub fn current_contributors(&self) -> Vec<(Participant, ParticipantInfo)> {
         self.current_contributors.clone().into_iter().collect()
+    }
+
+    ///
+    /// Returns a list of contributors that were dropped.
+    ///
+    #[inline]
+    pub fn dropped_contributors(&self) -> Vec<ParticipantInfo> {
+        self.dropped.clone()
+    }
+
+    ///
+    /// Returns a reference to the current [ParticipantInfo]
+    /// associated with the specified `verifier`.
+    ///
+    /// Returns `None` if the specified `verifier` has no associated
+    /// [ParticipantInfo].
+    ///
+    /// Expects `verifier` to be a [Participant::Verifier], will
+    /// return a [CoordinatorError::ExpectedVerifier] if not.
+    ///
+    #[inline]
+    pub fn current_verifier_info(&self, verifier: &Participant) -> Result<Option<&ParticipantInfo>, CoordinatorError> {
+        if !verifier.is_verifier() {
+            return Err(CoordinatorError::ExpectedVerifier);
+        }
+
+        Ok(self.current_verifiers.get(verifier))
     }
 
     ///

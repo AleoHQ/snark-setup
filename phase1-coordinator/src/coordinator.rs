@@ -540,6 +540,28 @@ impl Coordinator {
     }
 
     ///
+    /// Returns a clone of the current [ParticipantInfo] associated
+    /// with the specified `contributor`.
+    ///
+    /// Returns `None` if the specified `contributor` has no
+    /// associated [ParticipantInfo].
+    ///
+    /// Expects `contributor` to be a [Participant::Contributor], will
+    /// return a [CoordinatorError::ExpectedContributor] if not.
+    ///
+    #[inline]
+    pub fn current_contributor_info(
+        &self,
+        contributor: &Participant,
+    ) -> Result<Option<ParticipantInfo>, CoordinatorError> {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        state
+            .current_contributor_info(contributor)
+            .map(|option| option.cloned())
+    }
+
+    ///
     /// Returns a list of the contributors currently in the round.
     ///
     #[inline]
@@ -548,6 +570,23 @@ impl Coordinator {
         let state = self.state.read().unwrap();
         // Fetch the current contributors.
         state.current_contributors()
+    }
+
+    ///
+    /// Returns a clone of the current [ParticipantInfo] associated
+    /// with the specified `verifier`.
+    ///
+    /// Returns `None` if the specified `verifier` has no associated
+    /// [ParticipantInfo].
+    ///
+    /// Expects `verifier` to be a [Participant::Verifier], will
+    /// return a [CoordinatorError::ExpectedVerifier] if not.
+    ///
+    #[inline]
+    pub fn current_verifier_info(&self, verifier: &Participant) -> Result<Option<ParticipantInfo>, CoordinatorError> {
+        // Acquire a state read lock.
+        let state = self.state.read().unwrap();
+        state.current_verifier_info(verifier).map(|option| option.cloned())
     }
 
     ///
@@ -614,6 +653,10 @@ impl Coordinator {
 
     ///
     /// Drops the given participant from the ceremony.
+    ///
+    /// Returns the storage file locator path strings for the
+    /// [crate::storage::Locator::ContributionFile]s affected by the
+    /// state change of dropping the participant.
     ///
     #[inline]
     pub fn drop_participant(&self, participant: &Participant) -> Result<Vec<String>, CoordinatorError> {
@@ -2114,6 +2157,11 @@ impl Coordinator {
         Ok(round_height)
     }
 
+    ///
+    /// Returns the storage file locator path strings for the
+    /// [crate::storage::Locator::ContributionFile]s affected by the
+    /// state change.
+    ///
     #[inline]
     fn process_coordinator_state_change(
         &self,
