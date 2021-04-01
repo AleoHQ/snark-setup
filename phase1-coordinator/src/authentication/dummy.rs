@@ -28,7 +28,7 @@ impl Signature for Dummy {
     /// and returns `true` if the signature is valid.
     fn verify(&self, _public_key: &str, message: &str, signature: &str) -> bool {
         Self::warning();
-        signature == &hex::encode(calculate_hash(message.as_bytes()))
+        signature == hex::encode(calculate_hash(message.as_bytes()))
     }
 }
 

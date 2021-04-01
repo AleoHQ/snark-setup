@@ -997,7 +997,7 @@ impl Coordinator {
                 state.save(&mut storage)?;
 
                 error!("{}", error);
-                return Err(error);
+                Err(error)
             }
         }
     }

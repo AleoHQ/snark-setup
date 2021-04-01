@@ -76,9 +76,9 @@ impl<'de> Deserialize<'de> for Participant {
         let s = String::deserialize(deserializer)?;
 
         let (id, participant_type) = s
-            .splitn(2, ".")
+            .splitn(2, '.')
             .collect_tuple()
-            .ok_or(D::Error::custom("unknown participant type"))?;
+            .ok_or_else(|| D::Error::custom("unknown participant type"))?;
         let participant = match participant_type {
             "contributor" => Participant::Contributor(id.to_string()),
             "verifier" => Participant::Verifier(id.to_string()),

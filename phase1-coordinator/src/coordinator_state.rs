@@ -892,14 +892,14 @@ impl CoordinatorState {
         }
 
         // Initialize the finished contributors map for the current round, if it does not exist.
-        if !self.finished_contributors.contains_key(&current_round_height) {
-            self.finished_contributors.insert(current_round_height, HashMap::new());
-        }
+        self.finished_contributors
+            .entry(current_round_height)
+            .or_insert_with(HashMap::new);
 
         // Initialize the finished verifiers map for the current round, if it does not exist.
-        if !self.finished_verifiers.contains_key(&current_round_height) {
-            self.finished_verifiers.insert(current_round_height, HashMap::new());
-        }
+        self.finished_verifiers
+            .entry(current_round_height)
+            .or_insert_with(HashMap::new);
 
         // Set the status to initialized.
         self.status = CoordinatorStatus::Initialized;
@@ -1429,7 +1429,7 @@ impl CoordinatorState {
         match output.len() {
             0 => Ok(None),
             1 => Ok(Some(output[0])),
-            _ => return Err(CoordinatorError::ParticipantLockedChunkWithManyContributions),
+            _ => Err(CoordinatorError::ParticipantLockedChunkWithManyContributions),
         }
     }
 
@@ -1473,7 +1473,7 @@ impl CoordinatorState {
         match output.len() {
             0 => Ok(None),
             1 => Ok(Some(output[0])),
-            _ => return Err(CoordinatorError::ParticipantLockedChunkWithManyContributions),
+            _ => Err(CoordinatorError::ParticipantLockedChunkWithManyContributions),
         }
     }
 
@@ -1988,7 +1988,7 @@ impl CoordinatorState {
             }
 
             // Set the participant as dropped.
-            let mut dropped_info = participant_info.clone();
+            let mut dropped_info = participant_info;
             dropped_info.drop()?;
 
             // Remove the current verifier from the coordinator state.
@@ -2166,7 +2166,7 @@ impl CoordinatorState {
 
         // Update assigned round height for each contributor.
         for (index, round) in contributors.chunks(maximum_contributors).enumerate() {
-            for (contributor, reliability) in round.into_iter() {
+            for (contributor, reliability) in round.iter() {
                 let assigned_round = next_round + index as u64;
                 trace!(
                     "Assigning contributor {} with reliability {} in queue to round {}",
@@ -2180,7 +2180,7 @@ impl CoordinatorState {
 
         // Update assigned round height for each verifier.
         for (index, round) in verifiers.chunks(maximum_verifiers).enumerate() {
-            for (verifier, reliability) in round.into_iter() {
+            for (verifier, reliability) in round.iter() {
                 let assigned_round = next_round + index as u64;
                 trace!(
                     "Assigning verifier {} with reliability {} in queue to round {}",
@@ -2225,7 +2225,7 @@ impl CoordinatorState {
 
                 // Attempt to set the contributor as finished.
                 let mut finished_info = contributor_info.clone();
-                if let Err(_) = finished_info.finish() {
+                if finished_info.finish().is_err() {
                     return true;
                 }
 
@@ -2289,7 +2289,7 @@ impl CoordinatorState {
 
                     // Attempt to set the verifier as finished.
                     let mut finished_info = verifier_info.clone();
-                    if let Err(_) = finished_info.finish() {
+                    if finished_info.finish().is_err() {
                         return true;
                     }
 
@@ -2407,7 +2407,7 @@ impl CoordinatorState {
                                 _ => None,
                             })
                             .collect();
-                        if timed_tasks.len() > 0 {
+                        if !timed_tasks.is_empty() {
                             let average_in_seconds = timed_tasks.par_iter().sum::<u64>() / timed_tasks.len() as u64;
                             metrics.seconds_per_task.insert(participant.clone(), average_in_seconds);
 
@@ -2657,7 +2657,7 @@ impl CoordinatorState {
              */
 
             // Sort the contributors by their reliability (in order of highest to lowest number).
-            contributors.par_sort_by(|a, b| ((b.1).0).cmp(&(&a.1).0));
+            contributors.par_sort_by(|a, b| ((b.1).0).cmp(&(a.1).0));
 
             // Fetch the number of chunks and bucket size.
             let number_of_chunks = self.environment.number_of_chunks() as u64;
@@ -3040,9 +3040,9 @@ impl<'de> Deserialize<'de> for Task {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Task, D::Error> {
         let s = String::deserialize(deserializer)?;
 
-        let mut task = s.split("/");
-        let chunk_id = task.next().ok_or(D::Error::custom("invalid chunk ID"))?;
-        let contribution_id = task.next().ok_or(D::Error::custom("invalid contribution ID"))?;
+        let mut task = s.split('/');
+        let chunk_id = task.next().ok_or_else(|| D::Error::custom("invalid chunk ID"))?;
+        let contribution_id = task.next().ok_or_else(|| D::Error::custom("invalid contribution ID"))?;
         Ok(Task::new(
             u64::from_str(&chunk_id).map_err(de::Error::custom)?,
             u64::from_str(&contribution_id).map_err(de::Error::custom)?,

@@ -178,7 +178,7 @@ impl Storage for Disk {
                 debug!("Round {} filesize is {}", round_height, found);
                 if found == 0 || expected != found {
                     error!("Round file size should be {} but found {}", expected, found);
-                    return Err(CoordinatorError::RoundFileSizeMismatch.into());
+                    return Err(CoordinatorError::RoundFileSizeMismatch);
                 }
 
                 let mut round_file: Vec<u8> = Vec::with_capacity(expected as usize);
@@ -192,7 +192,7 @@ impl Storage for Disk {
                 debug!("Round {} chunk {} filesize is {}", round_height, chunk_id, found);
                 if found == 0 || expected != found {
                     error!("Contribution file size should be {} but found {}", expected, found);
-                    return Err(CoordinatorError::ContributionFileSizeMismatch.into());
+                    return Err(CoordinatorError::ContributionFileSizeMismatch);
                 }
 
                 let mut contribution_file: Vec<u8> = Vec::with_capacity(expected as usize);
@@ -212,7 +212,7 @@ impl Storage for Disk {
                         "Contribution signature file size should be {} but found {}",
                         expected, found
                     );
-                    return Err(CoordinatorError::ContributionSignatureFileSizeMismatch.into());
+                    return Err(CoordinatorError::ContributionSignatureFileSizeMismatch);
                 }
 
                 let contribution_file_signature: ContributionFileSignature = serde_json::from_slice(&*reader)?;
@@ -434,7 +434,7 @@ impl StorageObject for Disk {
                 debug!("Round {} filesize is {}", round_height, found);
                 if found != expected {
                     error!("Contribution file size should be {} but found {}", expected, found);
-                    return Err(CoordinatorError::RoundFileSizeMismatch.into());
+                    return Err(CoordinatorError::RoundFileSizeMismatch);
                 }
                 Ok(reader)
             }
@@ -445,7 +445,7 @@ impl StorageObject for Disk {
                 debug!("Round {} chunk {} filesize is {}", round_height, chunk_id, found);
                 if found != expected {
                     error!("Contribution file size should be {} but found {}", expected, found);
-                    return Err(CoordinatorError::ContributionFileSizeMismatch.into());
+                    return Err(CoordinatorError::ContributionFileSizeMismatch);
                 }
                 Ok(reader)
             }
@@ -488,7 +488,7 @@ impl StorageObject for Disk {
                 debug!("File size of {} is {}", self.to_path(locator)?, found);
                 if found != expected {
                     error!("Contribution file size should be {} but found {}", expected, found);
-                    return Err(CoordinatorError::RoundFileSizeMismatch.into());
+                    return Err(CoordinatorError::RoundFileSizeMismatch);
                 }
                 Ok(writer)
             }
@@ -499,7 +499,7 @@ impl StorageObject for Disk {
                 debug!("File size of {} is {}", self.to_path(locator)?, found);
                 if found != expected {
                     error!("Contribution file size should be {} but found {}", expected, found);
-                    return Err(CoordinatorError::ContributionFileSizeMismatch.into());
+                    return Err(CoordinatorError::ContributionFileSizeMismatch);
                 }
                 Ok(writer)
             }
@@ -902,7 +902,7 @@ impl StorageLocator for DiskResolver {
         }
 
         // Parse the key into its components.
-        if let Some((round, remainder)) = key.splitn(2, "/").collect_tuple() {
+        if let Some((round, remainder)) = key.splitn(2, '/').collect_tuple() {
             // Check if it resembles the round directory.
             if round.starts_with("round_") {
                 // Attempt to parse the round string for the round height.
@@ -913,7 +913,7 @@ impl StorageLocator for DiskResolver {
                 )?;
 
                 // Check if it matches the round directory.
-                if round == &format!("round_{}", round_height) {
+                if round == format!("round_{}", round_height) {
                     /* In round directory */
 
                     // Check if it matches the round state.
@@ -927,7 +927,7 @@ impl StorageLocator for DiskResolver {
                     }
 
                     // Parse the path into its components.
-                    if let Some((chunk, path)) = remainder.splitn(2, "/").collect_tuple() {
+                    if let Some((chunk, path)) = remainder.splitn(2, '/').collect_tuple() {
                         // Check if it resembles the chunk directory.
                         if chunk.starts_with("chunk_") {
                             // Attempt to parse the path string for the chunk ID.
@@ -938,7 +938,7 @@ impl StorageLocator for DiskResolver {
                             )?;
 
                             // Check if it matches the chunk directory.
-                            if chunk == &format!("chunk_{}", chunk_id) {
+                            if chunk == format!("chunk_{}", chunk_id) {
                                 /* In chunk directory */
 
                                 // Check if it matches the contribution file.
