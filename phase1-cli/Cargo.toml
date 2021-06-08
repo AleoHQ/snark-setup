@@ -12,7 +12,8 @@ edition = "2018"
 phase1 = { path = "../phase1", default-features = false }
 setup-utils = { path = "../setup-utils", default-features = false }
 
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761", "derive"] }
+snarkos-curves = { version = "1.1.4", default-features = false }
+snarkos-models = { version = "1.1.4", default-features = false }
 
 gumdrop = { version = "0.8.0" }
 hex = { version = "0.4.2" }
@@ -31,7 +32,7 @@ rustc_version = { version = "0.3" }
 [features]
 default = ["cli"]
 cli = ["phase1/cli", "parallel", "setup-utils/cli"]
-parallel = ["phase1/parallel", "setup-utils/parallel", "zexe_algebra/parallel"]
+parallel = ["phase1/parallel", "setup-utils/parallel"]
 
 [[bin]]
 name = "phase1"

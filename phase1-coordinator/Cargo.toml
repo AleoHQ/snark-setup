@@ -16,7 +16,8 @@ path = "src/main.rs"
 phase1 = { path = "../phase1" }
 setup-utils = { path = "../setup-utils", default-features = false }
 
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761", "derive"] }
+snarkos-curves = { version = "1.1.4", default-features = false }
+snarkos-models = { version = "1.1.4", default-features = false }
 
 anyhow = { version = "1.0.37" }
 chrono = { version = "0.4", features = ["serde"] }

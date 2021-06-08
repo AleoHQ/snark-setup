@@ -8,8 +8,8 @@ use phase1_coordinator::{
     objects::{ContributionFileSignature, ContributionState},
 };
 use setup1_shared::structures::SetupKind;
+use snarkos_models::curves::PairingEngine;
 use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
-use zexe_algebra::PairingEngine;
 
 use anyhow::Result;
 use rand::{CryptoRng, Rng};

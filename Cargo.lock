@@ -2471,14 +2471,11 @@ dependencies = [
 name = "phase1"
 version = "0.3.0"
 dependencies = [
- "algebra",
- "algebra-core",
  "anyhow",
  "blake2",
  "cfg-if 0.1.10",
  "criterion",
  "derivative",
- "ff-fft",
  "itertools",
  "num-traits",
  "phase1",
@@ -2487,17 +2484,17 @@ dependencies = [
  "rusty-hook",
  "serde",
  "setup-utils",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-gadgets 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-gadgets 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "snarkos-marlin",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-objects 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-objects 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "snarkos-polycommit",
  "snarkos-posw",
  "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
 ]
 
@@ -2505,7 +2502,6 @@ dependencies = [
 name = "phase1-cli"
 version = "0.3.0"
 dependencies = [
- "algebra",
  "gumdrop",
  "hex",
  "memmap",
@@ -2514,6 +2510,8 @@ dependencies = [
  "rand_xorshift",
  "rustc_version 0.3.0",
  "setup-utils",
+ "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen-test",
@@ -2523,7 +2521,6 @@ dependencies = [
 name = "phase1-coordinator"
 version = "0.3.0"
 dependencies = [
- "algebra",
  "anyhow",
  "chrono",
  "ctrlc",
@@ -2541,6 +2538,8 @@ dependencies = [
  "serde_with",
  "serial_test",
  "setup-utils",
+ "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "tokio 0.3.1",
  "tracing",
@@ -2552,7 +2551,6 @@ dependencies = [
 name = "phase1-wasm"
 version = "0.3.0"
 dependencies = [
- "algebra",
  "console_error_panic_hook",
  "phase1",
  "rand 0.7.3",
@@ -2561,6 +2559,8 @@ dependencies = [
  "serde",
  "serde_derive",
  "setup-utils",
+ "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
@@ -3508,22 +3508,24 @@ dependencies = [
 name = "setup-utils"
 version = "0.3.0"
 dependencies = [
- "algebra",
  "blake2",
  "blake2s_simd",
  "cfg-if 0.1.10",
  "criterion",
  "crossbeam",
- "ff-fft",
  "num_cpus",
  "phase1",
- "r1cs-core",
  "rand 0.7.3",
  "rand_chacha 0.2.2",
  "rayon",
  "rust-crypto",
  "rusty-hook",
  "serde",
+ "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "tracing",
  "typenum",
@@ -3550,7 +3552,6 @@ name = "setup1-contributor"
 version = "0.4.0"
 dependencies = [
  "age",
- "algebra",
  "anyhow",
  "azure_sdk_core",
  "azure_sdk_storage_blob",
@@ -3578,6 +3579,8 @@ dependencies = [
  "serial_test",
  "setup-utils",
  "setup1-shared",
+ "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "snarkos-toolkit",
  "structopt",
  "thiserror",
@@ -3601,7 +3604,6 @@ dependencies = [
 name = "setup1-verifier"
 version = "0.4.0"
 dependencies = [
- "algebra",
  "anyhow",
  "chrono",
  "ctrlc",
@@ -3620,6 +3622,7 @@ dependencies = [
  "serial_test",
  "setup-utils",
  "setup1-shared",
+ "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "snarkos-toolkit",
  "structopt",
  "thiserror",
@@ -3731,6 +3734,27 @@ dependencies = [
 [[package]]
 name = "snarkos-algorithms"
 version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb07037b1575665f3a727ef444c513b4727dda85378c5eba26b4c881bc3046e8"
+dependencies = [
+ "blake2",
+ "derivative",
+ "digest 0.8.1",
+ "itertools",
+ "rand 0.7.3",
+ "rand_chacha",
+ "rayon",
+ "sha2",
+ "smallvec",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-profiler 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "snarkos-algorithms"
+version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
 dependencies = [
  "blake2",
@@ -3771,6 +3795,22 @@ dependencies = [
 [[package]]
 name = "snarkos-curves"
 version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3aee88d337863483d07cd91e5dbc1c12de1375c1a133c49fe18f771924a80d6e"
+dependencies = [
+ "derivative",
+ "rand 0.7.3",
+ "rand_xorshift",
+ "rustc_version 0.2.3",
+ "serde",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "snarkos-curves"
+version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
 dependencies = [
  "derivative",
@@ -3796,6 +3836,17 @@ dependencies = [
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+]
+
+[[package]]
+name = "snarkos-derives"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f6ce35f9f73c13e5381c6938747935ca105e22717998489c3e5ddb8c13120d"
+dependencies = [
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.60",
 ]
 
 [[package]]
@@ -3863,6 +3914,23 @@ dependencies = [
 [[package]]
 name = "snarkos-errors"
 version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df927c3b41badf8a8479dd6b23340e4799bec44abb7a479cb253d912e888a1ca"
+dependencies = [
+ "base58",
+ "bech32 0.6.0",
+ "bincode",
+ "curl",
+ "hex",
+ "jsonrpc-core",
+ "rocksdb",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "snarkos-errors"
+version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
 dependencies = [
  "base58",
@@ -3882,12 +3950,26 @@ dependencies = [
  "base58",
  "bech32 0.6.0",
  "bincode",
- "curl",
  "hex",
  "jsonrpc-core",
- "rocksdb",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "snarkos-gadgets"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f4bded425072f394dacf206323bcd3d2e199d6ec5f7ced3c36fb77f7d22300b"
+dependencies = [
+ "derivative",
+ "digest 0.8.1",
+ "itertools",
+ "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -3923,7 +4005,8 @@ dependencies = [
 [[package]]
 name = "snarkos-marlin"
 version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b12c63bbb6a77d46c133a773556e1a97891e37cdd4a9b5e366d21247c147219"
 dependencies = [
  "blake2",
  "derivative",
@@ -3931,13 +4014,30 @@ dependencies = [
  "rand_chacha 0.2.2",
  "rand_core 0.5.1",
  "rayon",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-gadgets 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-gadgets 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "snarkos-polycommit",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-profiler 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "snarkos-models"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38d90d4fd9030e69dcbca1f7eaea3f14c08653f0f06600f42c2022e8cf72f82d"
+dependencies = [
+ "bincode",
+ "derivative",
+ "itertools",
+ "rand 0.7.3",
+ "rand_xorshift",
+ "serde",
+ "smallvec",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -3970,6 +4070,28 @@ dependencies = [
  "smallvec",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+]
+
+[[package]]
+name = "snarkos-objects"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5ec3bdfbe179a157d1484e11ec65fdd3d2bf377ad1a7695753c5f613a57a790"
+dependencies = [
+ "base58",
+ "bech32 0.6.0",
+ "chrono",
+ "derivative",
+ "hex",
+ "once_cell",
+ "rand 0.7.3",
+ "serde",
+ "sha2",
+ "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -4017,6 +4139,20 @@ dependencies = [
 [[package]]
 name = "snarkos-parameters"
 version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8d7634a5cd35a680b81d58dbd842ee38413e81cd9ad6b8317cd93f84c9513c3"
+dependencies = [
+ "curl",
+ "hex",
+ "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "snarkos-parameters"
+version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=6357695#6357695cffa754608f8147c9d7d8a8d8fbc38d4d"
 dependencies = [
  "hex",
@@ -4031,7 +4167,6 @@ name = "snarkos-parameters"
 version = "1.1.4"
 source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
 dependencies = [
- "curl",
  "hex",
  "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
  "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
@@ -4042,38 +4177,46 @@ dependencies = [
 [[package]]
 name = "snarkos-polycommit"
 version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdad1535c73ffcfbf5d24f0caa786a25e6db27835debfbd22a0e9c58af938641"
 dependencies = [
  "derivative",
  "digest 0.8.1",
  "rand_core 0.5.1",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-profiler 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "snarkos-posw"
 version = "1.1.4"
-source = "git+https://github.com/AleoHQ/snarkOS?rev=801bf76#801bf76e04e41ed2b41774bc8928f882aa322d15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96a5a903b2e2c2c6ebdadbf25768ac6c46e56ba73a5d0e5550c612c0e5427a8d"
 dependencies = [
  "blake2",
  "rand 0.7.3",
- "snarkos-algorithms 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-curves 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-errors 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-gadgets 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-algorithms 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-curves 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-gadgets 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "snarkos-marlin",
- "snarkos-models 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-objects 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-parameters 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-models 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-objects 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-parameters 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "snarkos-polycommit",
- "snarkos-profiler 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
- "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=801bf76)",
+ "snarkos-profiler 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-utilities 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
+
+[[package]]
+name = "snarkos-profiler"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0519c9371650425e332e3971ecfc691fbd1c67e03be15c20aba89ac8242ea2b"
 
 [[package]]
 name = "snarkos-profiler"
@@ -4102,6 +4245,18 @@ dependencies = [
  "snarkos-utilities 1.1.4 (git+https://github.com/AleoHQ/snarkOS?rev=6357695)",
  "thiserror",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "snarkos-utilities"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f6e1ccf791ace8d28266d3067d0bf93e3a0c1beafa472f186f55866fe8a7d73"
+dependencies = [
+ "bincode",
+ "rand 0.7.3",
+ "snarkos-derives 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snarkos-errors 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

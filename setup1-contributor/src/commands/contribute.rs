@@ -25,8 +25,9 @@ use phase1_coordinator::{
 };
 use setup1_shared::structures::PublicSettings;
 use setup_utils::calculate_hash;
+use snarkos_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
+use snarkos_models::curves::PairingEngine;
 use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
-use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
 use anyhow::{Context, Result};
 use chrono::Duration;
