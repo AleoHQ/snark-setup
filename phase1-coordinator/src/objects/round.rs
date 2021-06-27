@@ -819,7 +819,10 @@ impl Round {
             // .filter(|chunk_id| self.is_chunk_locked_by(**chunk_id, participant))
             .collect();
 
-        trace!("Removing locks for chunks {:?} from {}", locked_chunks, participant);
+        warn!(
+            "Removing locks for chunks that were affected by the drop of {}: {:?}",
+            participant, locked_chunks
+        );
 
         // Fetch the current round height.
         let current_round_height = self.round_height();

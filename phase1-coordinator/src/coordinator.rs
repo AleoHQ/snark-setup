@@ -129,7 +129,7 @@ pub enum CoordinatorError {
     ParticipantShouldNotBeFinished,
     ParticipantStillHasLock,
     ParticipantStillHasLocks,
-    ParticipantStillHasTaskAsAssigned,
+    ParticipantStillHasTaskAsAssigned(Task),
     ParticipantStillHasTaskAsPending,
     ParticipantUnauthorized,
     ParticipantUnauthorizedForChunkId { chunk_id: u64 },
@@ -1249,7 +1249,10 @@ impl Coordinator {
     ///
     /// On failure, it returns a `CoordinatorError`.
     ///
-    #[inline]
+    #[tracing::instrument(
+        skip(self, participant, chunk_id),
+        fields(participant = %participant, chunk = chunk_id)
+    )]
     pub fn try_verify(&self, participant: &Participant, chunk_id: u64) -> Result<(), CoordinatorError> {
         // Check that the participant is a verifier.
         if !participant.is_verifier() {
@@ -1289,6 +1292,7 @@ impl Coordinator {
 
         // Check if the participant should dispose the response being contributed.
         if let Some(task) = state.lookup_disposing_task(participant, chunk_id)?.cloned() {
+            tracing::debug!("Disposing task {}", task);
             let contribution_id = task.contribution_id();
 
             // Move the task to the disposed tasks of the verifier.
@@ -1297,10 +1301,7 @@ impl Coordinator {
             // Save the coordinator state in storage.
             state.save(&mut storage)?;
 
-            debug!(
-                "Removing lock for verifier {} disposed task {} {}",
-                participant, chunk_id, contribution_id
-            );
+            debug!("Removing lock for verifier {} disposed task {}", participant, task);
 
             // Fetch the current round from storage.
             let mut round = Self::load_current_round(&storage)?;

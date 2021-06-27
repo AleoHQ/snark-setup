@@ -593,6 +593,12 @@ impl ParticipantInfo {
     /// removes the given chunk ID from the locked chunks held by this
     /// participant.
     ///
+    #[tracing::instrument(
+        level = "error",
+        skip(self, time),
+        fields(participant = %self.id, task = %task)
+        err
+    )]
     fn completed_task(&mut self, task: Task, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Completing task for {}", self.id);
 
@@ -618,7 +624,12 @@ impl ParticipantInfo {
 
         // Check that the participant does not have a assigned task remaining for this.
         if self.assigned_tasks.contains(&task) {
-            return Err(CoordinatorError::ParticipantStillHasTaskAsAssigned);
+            tracing::error!(
+                "ParticipantStillHasTaskAsAssigned({}) Currently assigned tasks: {:#?}",
+                &task,
+                &self.assigned_tasks
+            );
+            return Err(CoordinatorError::ParticipantStillHasTaskAsAssigned(task));
         }
 
         // Check that the participant has a pending task for this.
@@ -649,6 +660,7 @@ impl ParticipantInfo {
         self.last_seen = time.utc_now();
 
         // Remove the given chunk ID from the locked chunks.
+        tracing::debug!("Removing lock on chunk for task {}", task);
         self.locked_chunks.remove(&task.chunk_id());
 
         // Remove the task from the pending tasks.
@@ -669,17 +681,13 @@ impl ParticipantInfo {
     /// Completes the disposal of a given chunk (chunk ID, contribution ID) task present in the `disposing_tasks` list to the list of disposed tasks
     /// and removes the given chunk ID from the locked chunks held by this participant.
     ///
-    #[inline]
-    fn dispose_task(
-        &mut self,
-        chunk_id: u64,
-        contribution_id: u64,
-        time: &dyn TimeSource,
-    ) -> Result<(), CoordinatorError> {
-        trace!("Disposed task for {}", self.id);
-
-        // Set the task as the given chunk ID and contribution ID.
-        let task = Task::new(chunk_id, contribution_id);
+    #[tracing::instrument(
+        skip(self, task, time),
+        fields(participant = %self.id, task = %task),
+        err
+    )]
+    fn dispose_task(&mut self, task: &Task, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
+        trace!("Disposed task");
 
         // Check that the participant has started in the round.
         if self.started_at.is_none() {
@@ -697,9 +705,9 @@ impl ParticipantInfo {
         }
 
         // Check that the participant had locked this chunk.
-        if !self.locked_chunks.contains_key(&chunk_id) {
-            return Err(CoordinatorError::ParticipantDidntLockChunkId);
-        }
+        // if !self.locked_chunks.contains_key(&task.chunk_id()) {
+        //     return Err(CoordinatorError::ParticipantDidntLockChunkId);
+        // }
 
         // TODO (raychu86): Reevaluate this check. When a participant is dropped, all tasks
         //  are reassigned so the tasks will always be present.
@@ -717,18 +725,19 @@ impl ParticipantInfo {
         self.last_seen = time.utc_now();
 
         // Remove the given chunk ID from the locked chunks.
-        self.locked_chunks.remove(&chunk_id);
+        tracing::debug!("Removing lock on chunk for task {}", task);
+        self.locked_chunks.remove(&task.chunk_id());
 
         // Remove the task from the disposing tasks.
         self.disposing_tasks = self
             .disposing_tasks
             .clone()
             .into_par_iter()
-            .filter(|t| *t != task)
+            .filter(|t| t != task)
             .collect();
 
         // Add the task to the completed tasks.
-        self.disposed_tasks.push_back(task);
+        self.disposed_tasks.push_back(*task);
 
         Ok(())
     }
@@ -1570,28 +1579,27 @@ impl CoordinatorState {
         task: &Task,
         time: &dyn TimeSource,
     ) -> Result<(), CoordinatorError> {
-        let chunk_id = task.chunk_id();
-        let contribution_id = task.contribution_id();
-
         // Check that the chunk ID is valid.
-        if chunk_id > self.environment.number_of_chunks() {
+        if task.chunk_id() > self.environment.number_of_chunks() {
             return Err(CoordinatorError::ChunkIdInvalid);
         }
 
         warn!(
             "Disposing chunk {} contribution {} from {}",
-            chunk_id, contribution_id, participant
+            task.chunk_id(),
+            task.contribution_id(),
+            participant
         );
 
         match participant {
             Participant::Contributor(_) => match self.current_contributors.get_mut(participant) {
                 // Move the disposing task to the list of disposed tasks for the contributor.
-                Some(participant) => participant.dispose_task(chunk_id, contribution_id, time),
+                Some(participant) => participant.dispose_task(task, time),
                 None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
             Participant::Verifier(_) => match self.current_verifiers.get_mut(participant) {
                 // Move the disposing task to the list of disposed tasks for the verifier.
-                Some(participant) => participant.dispose_task(chunk_id, contribution_id, time),
+                Some(participant) => participant.dispose_task(task, time),
                 None => Err(CoordinatorError::ParticipantNotFound(participant.clone())),
             },
         }
@@ -1953,7 +1961,7 @@ impl CoordinatorState {
 
         // Fetch the bucket ID, locked chunks, and tasks.
         let bucket_id = participant_info.bucket_id;
-        let locked_chunks: Vec<u64> = participant_info.locked_chunks.keys().cloned().collect();
+        let mut locked_chunks: Vec<u64> = participant_info.locked_chunks.keys().cloned().collect();
         let dropped_affected_tasks: Vec<Task> = match participant {
             Participant::Contributor(_) => participant_info.completed_tasks.iter().cloned().collect(),
             Participant::Verifier(_) => {
@@ -2036,6 +2044,17 @@ impl CoordinatorState {
                     contributor_info.completed_tasks = completed_tasks;
                     contributor_info.disposed_tasks.extend(&disposed_tasks);
 
+                    // this is a hack to try to ensure that locked chunks are actually removed
+                    locked_chunks.extend(
+                        contributor_info
+                            .locked_chunks
+                            .iter()
+                            .filter_map(|(chunk, _v)| dropped_affected_tasks_by_chunk.get(chunk).map(|_| chunk)),
+                    );
+                    for task in contributor_info.disposed_tasks.clone() {
+                        // contributor_info.dispose_task(&task, time)?;
+                    }
+
                     // Ensure that these tasks get removed from storage
                     affected_tasks.extend(&disposed_tasks);
 
@@ -2069,6 +2088,17 @@ impl CoordinatorState {
                     verifier_info.pending_tasks = pending_tasks;
                     verifier_info.disposing_tasks = disposing_tasks;
 
+                    // this is a hack to try to ensure that locked chunks are actually removed
+                    locked_chunks.extend(
+                        verifier_info
+                            .locked_chunks
+                            .iter()
+                            .filter_map(|(chunk, _v)| dropped_affected_tasks_by_chunk.get(chunk).map(|_| chunk)),
+                    );
+                    for task in verifier_info.disposing_tasks.clone() {
+                        verifier_info.dispose_task(&task, time)?;
+                    }
+
                     // Filter the current verifier for completed tasks that have been disposed.
                     let (disposed_tasks, completed_tasks) = verifier_info
                         .completed_tasks
@@ -2080,6 +2110,10 @@ impl CoordinatorState {
                     //       https://github.com/AleoHQ/aleo-setup/issues/249
                     verifier_info.completed_tasks = completed_tasks;
                     verifier_info.disposed_tasks.extend(&disposed_tasks);
+
+                    tracing::debug!("verifier completed tasks: {:?}", verifier_info.completed_tasks);
+                    tracing::debug!("verifier pending tasks: {:?}", verifier_info.completed_tasks);
+                    tracing::debug!("verifier disposed tasks: {:?}", verifier_info.disposed_tasks);
                 }
 
                 // Remove the current verifier from the coordinator state.

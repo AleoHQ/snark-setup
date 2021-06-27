@@ -26,6 +26,7 @@ use phase1_coordinator::{
 use setup1_shared::structures::PublicSettings;
 use setup_utils::calculate_hash;
 use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
 
 use anyhow::{Context, Result};
@@ -903,7 +904,11 @@ async fn start_contributor(opts: &ContributeOptions, public_settings: &PublicSet
     // Initialize tracing logger. Stored to `aleo-setup.log`.
     let appender = tracing_appender::rolling::never(".", "aleo-setup.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(appender);
-    tracing_subscriber::fmt().with_writer(non_blocking).init();
+
+    FmtSubscriber::builder()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(non_blocking)
+        .finish();
 
     // Read the stored contribution seed and Aleo private key.
     let (seed, private_key) =

@@ -67,8 +67,10 @@ async fn main() {
     let storage_prefix = format!("{:?}", public_settings.setup).to_lowercase();
     let tasks_storage_path = format!("{}_verifier.tasks", storage_prefix);
 
-    let raw_view_key = std::fs::read_to_string(options.view_key).expect("View key not found");
-    let view_key = ViewKey::from_str(&raw_view_key).expect("Invalid view key");
+    let raw_view_key = std::fs::read_to_string(&options.view_key)
+        .unwrap_or_else(|error| panic!("View key file {:?} not found: {}", &options.view_key, error));
+    let view_key = ViewKey::from_str(&raw_view_key)
+        .unwrap_or_else(|error| panic!("Invalid view key file {:?}: {}", &options.view_key, error));
     let address = Address::from_view_key(&view_key).expect("Address not derived correctly");
 
     // Initialize the verifier
