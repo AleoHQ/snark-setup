@@ -1,7 +1,7 @@
 use phase2::chunked_groth16::verify as chunked_verify;
 use setup_utils::Result;
 
-use zexe_algebra::{Bls12_377, BW6_761};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
 use gumdrop::Options;
 use memmap::MmapOptions;

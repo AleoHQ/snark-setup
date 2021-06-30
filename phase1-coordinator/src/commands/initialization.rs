@@ -5,11 +5,12 @@ use crate::{
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
 use setup_utils::{blank_hash, calculate_hash, UseCompression};
-use zexe_algebra::PairingEngine as Engine;
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
+
+use snarkvm_curves::PairingEngine as Engine;
 
 use std::{io::Write, time::Instant};
 use tracing::{debug, error, info, trace};
-use zexe_algebra::{Bls12_377, BW6_761};
 
 pub(crate) struct Initialization;
 

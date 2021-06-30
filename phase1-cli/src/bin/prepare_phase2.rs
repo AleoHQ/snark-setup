@@ -5,7 +5,7 @@ use phase1::{
 };
 use setup_utils::{CheckForCorrectness, Groth16Params, Result, UseCompression};
 
-use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine as Engine};
 
 use gumdrop::Options;
 use memmap::*;
@@ -45,7 +45,7 @@ struct PreparePhase2Opts {
     pub phase2_size: u32,
 }
 
-fn prepare_phase2<E: PairingEngine + Sync>(opts: &PreparePhase2Opts) -> Result<()> {
+fn prepare_phase2<E: Engine + Sync>(opts: &PreparePhase2Opts) -> Result<()> {
     let parameters = Phase1Parameters::<E>::new_full(opts.proving_system, opts.power, opts.batch_size);
     // Try to load response file from disk.
     let reader = OpenOptions::new()

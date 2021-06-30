@@ -1,4 +1,4 @@
-use zexe_algebra::PairingEngine;
+use snarkvm_curves::PairingEngine;
 
 /// Contains the secrets τ, α and β that the participant of the ceremony must destroy.
 #[derive(PartialEq, Debug)]

@@ -21,11 +21,11 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
             // Sample random g^s
             let g1_s = E::G1Projective::rand(rng).into_affine();
             // Compute g^{s*x}
-            let g1_s_x = g1_s.mul(x).into_affine();
+            let g1_s_x = g1_s.mul(x);
             // Hash into G2 as g^{s'}
             let g2_s: E::G2Affine = compute_g2_s::<E>(&digest, &g1_s, &g1_s_x, personalization)?;
             // Compute g^{s'*x}
-            let g2_s_x = g2_s.mul(x).into_affine();
+            let g2_s_x = g2_s.mul(x);
 
             Ok(((g1_s, g1_s_x), g2_s_x))
         };

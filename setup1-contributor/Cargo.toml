@@ -15,7 +15,7 @@ setup1-shared = { version = "0.1", path = "../setup1-shared" }
 setup-utils = { path = "../setup-utils" }
 
 snarkos-toolkit = { git = "https://github.com/AleoHQ/snarkOS", rev = "6357695", package = "snarkos-toolkit", default-features = false }
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761", "derive"] }
+snarkvm-curves = { version = "0.6" }
 
 age = { version = "0.5", features = [ "cli-common", "armor" ] }
 azure_sdk_core = { version = "0.43.7", optional = true }

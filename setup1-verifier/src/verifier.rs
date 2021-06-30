@@ -15,7 +15,7 @@ use phase1_coordinator::{
 };
 use setup_utils::calculate_hash;
 use snarkos_toolkit::account::{Address, ViewKey};
-use zexe_algebra::{Bls12_377, BW6_761};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
 use chrono::Utc;
 use std::{fs, str::FromStr, sync::Arc, thread::sleep, time::Duration};

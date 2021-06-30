@@ -13,8 +13,7 @@ use setup_utils::{
     CheckForCorrectness,
     UseCompression,
 };
-
-use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine};
 
 use rand::Rng;
 use wasm_bindgen::prelude::*;

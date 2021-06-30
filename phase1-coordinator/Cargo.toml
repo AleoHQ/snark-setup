@@ -15,8 +15,7 @@ path = "src/main.rs"
 [dependencies]
 phase1 = { path = "../phase1" }
 setup-utils = { path = "../setup-utils", default-features = false }
-
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761", "derive"] }
+snarkvm-curves = { version = "0.6" }
 
 anyhow = { version = "1.0.37" }
 chrono = { version = "0.4", features = ["serde"] }
@@ -25,7 +24,7 @@ itertools = { version = "0.9.0" }
 hex = { version = "0.4.2" }
 memmap = { version = "0.7.0" }
 once_cell = { version = "1.5.2" }
-rand = { version = "0.7.3" }
+rand = { version = "0.8" }
 rayon = { version = "1.4.1" }
 serde = { version = "1.0", features = ["derive"] }
 serde-aux = { version = "0.6" }

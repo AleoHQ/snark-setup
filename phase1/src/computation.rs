@@ -1,5 +1,5 @@
 use super::*;
-use zexe_algebra::{batch_inversion, Field};
+use snarkvm_fields::{batch_inversion, Field};
 
 impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
     ///
@@ -40,7 +40,7 @@ impl<'a, E: PairingEngine + Sync> Phase1<'a, E> {
                     let mut beta_g2_el =
                         beta_g2_inputs.read_element::<E::G2Affine>(compressed_input, check_input_for_correctness)?;
                     // Multiply it by the key's beta element.
-                    beta_g2_el = beta_g2_el.mul(key.beta).into_affine();
+                    beta_g2_el = beta_g2_el.mul(key.beta);
                     // Write it back.
                     beta_g2_outputs.write_element(&beta_g2_el, compressed_output)?;
                 }
@@ -301,7 +301,7 @@ mod tests {
     use crate::helpers::testing::generate_input;
     use setup_utils::{batch_exp, derive_rng_from_seed, generate_powers_of_tau};
 
-    use zexe_algebra::{Bls12_377, ProjectiveCurve, BW6_761};
+    use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
     fn curve_computation_test<E: PairingEngine>(
         powers: usize,
@@ -366,7 +366,7 @@ mod tests {
                         Some(&privkey.beta),
                     )
                     .unwrap();
-                    before.beta_g2 = before.beta_g2.mul(privkey.beta).into_affine();
+                    before.beta_g2 = before.beta_g2.mul(privkey.beta);
                 }
                 ProvingSystem::Marlin => {
                     let tau_powers = generate_powers_of_tau::<E>(&privkey.tau, 0, parameters.powers_length);

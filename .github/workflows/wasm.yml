@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.48.0
+          - 1.53.0
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -28,10 +28,9 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      # pinned --toolchain 1.48.0 should be changed later to stable
       - name: Install WASM
         run: |
-          rustup target add wasm32-unknown-unknown --toolchain 1.48.0
+          rustup target add wasm32-unknown-unknown --toolchain 1.53.0
           cargo install wasm-bindgen-cli
           cargo update -p wasm-bindgen
 

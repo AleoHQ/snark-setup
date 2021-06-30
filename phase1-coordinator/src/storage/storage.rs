@@ -5,6 +5,7 @@ use crate::{
     CoordinatorState,
 };
 use phase1::helpers::CurveKind;
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
 use memmap::MmapMut;
 use serde::{Deserialize, Serialize};
@@ -14,7 +15,6 @@ use std::{
     path::Path,
     sync::{RwLockReadGuard, RwLockWriteGuard},
 };
-use zexe_algebra::{Bls12_377, BW6_761};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ContributionLocator {

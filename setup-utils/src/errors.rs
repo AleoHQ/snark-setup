@@ -1,7 +1,7 @@
 use crate::ElementType;
 
-use zexe_algebra::SerializationError;
-use zexe_r1cs_core::SynthesisError;
+use snarkvm_r1cs::SynthesisError;
+use snarkvm_utilities::SerializationError;
 
 use std::io;
 use thiserror::Error;

@@ -14,17 +14,19 @@ name = "math"
 harness = false
 
 [dependencies]
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0" }
-zexe_fft = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "ff-fft", version = "0.1.0", default-features = false }
-zexe_r1cs_core = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-core", version = "0.1.0" }
+snarkvm-algorithms = { version = "0.6" }
+snarkvm-curves = { version = "0.6" }
+snarkvm-fields = { version = "0.6" }
+snarkvm-r1cs = { version = "0.6" }
+snarkvm-utilities = { version = "0.6" }
 
 blake2 = { version = "0.8.1" }
 blake2s_simd = { version = "0.5.11" }
 cfg-if = { version = "0.1.10" }
 crossbeam = { version = "0.8.0" }
 num_cpus = { version = "1.12.0" }
-rand = { version = "0.7.3" }
-rand_chacha = { version = "0.2.1" }
+rand = { version = "0.8" }
+rand_chacha = { version = "0.3" }
 rayon = { version = "1.4.1", optional = true }
 rust-crypto = { version = "0.2", optional = true }
 serde = { version = "1.0", features = ["derive"] }
@@ -33,9 +35,7 @@ tracing = { version = "0.1.21" }
 typenum = { version = "1.11.2" }
 
 [dev-dependencies]
-phase1 = { path = "../phase1" }
-
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["bls12_377", "bw6_761"] }
+phase1 = { path = "../phase1", features = ["testing"] }
 
 criterion = { version = "0.3.1" }
 rusty-hook = { version = "0.11.2" }
@@ -43,6 +43,6 @@ rusty-hook = { version = "0.11.2" }
 [features]
 default = ["parallel"]
 cli = ["parallel", "rust-crypto"]
-wasm = ["rand/wasm-bindgen"]
+wasm = []
 
-parallel = ["rayon", "zexe_algebra/parallel", "zexe_fft/parallel"]
+parallel = ["rayon", "snarkvm-algorithms/parallel"]

@@ -4,12 +4,14 @@ use crate::{helpers::buffers::*, Phase1Parameters, ProvingSystem};
 use cfg_if::cfg_if;
 use setup_utils::{BatchDeserializer, BatchSerializer, Deserializer, Serializer, *};
 
-use zexe_algebra::{AffineCurve, PairingEngine};
+use snarkvm_curves::{AffineCurve, PairingEngine};
+use snarkvm_fields::Zero;
+use snarkvm_utilities::BitIteratorBE;
 
 #[cfg(not(feature = "wasm"))]
 use crate::ContributionMode;
 #[cfg(not(feature = "wasm"))]
-use zexe_algebra::{FpParameters, PrimeField, Zero};
+use snarkvm_fields::{FieldParameters, PrimeField};
 
 #[allow(type_alias_bounds)]
 type AccumulatorElements<E: PairingEngine> = (
@@ -33,11 +35,6 @@ type AccumulatorElementsRef<'a, E: PairingEngine> = (
 cfg_if! {
     if #[cfg(not(feature = "wasm"))] {
         use crate::PublicKey;
-
-        use zexe_fft::cfg_iter;
-
-        #[cfg(feature = "parallel")]
-        use rayon::prelude::*;
 
         /// Given a public key and the accumulator's digest, it hashes each G1 element
         /// along with the digest, and then hashes it to G2.
@@ -101,8 +98,8 @@ cfg_if! {
                 CheckForCorrectness::Full,
             )?;
             // TODO(kobi): replace with batch subgroup check
-            let all_in_prime_order_subgroup = cfg_iter!(elements).all(|p| {
-                p.mul(<<C::ScalarField as PrimeField>::Params as FpParameters>::MODULUS)
+            let all_in_prime_order_subgroup = elements.iter().all(|p| {
+                p.mul_bits(BitIteratorBE::new(<<C::ScalarField as PrimeField>::Parameters as FieldParameters>::MODULUS))
                     .is_zero()
             });
             if !all_in_prime_order_subgroup {
@@ -315,7 +312,7 @@ mod tests {
     use super::*;
     use crate::helpers::testing::random_point_vec;
 
-    use zexe_algebra::bls12_377::Bls12_377;
+    use snarkvm_curves::bls12_377::Bls12_377;
 
     use rand::thread_rng;
 

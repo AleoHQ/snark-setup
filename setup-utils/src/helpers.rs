@@ -2,20 +2,11 @@ use crate::{
     errors::{Error, VerificationError},
     Result,
 };
-use zexe_algebra::{
-    AffineCurve,
-    BigInteger,
-    CanonicalSerialize,
-    ConstantSerializedSize,
-    Field,
-    One,
-    PairingEngine,
-    PrimeField,
-    ProjectiveCurve,
-    UniformRand,
-    Zero,
-};
-use zexe_fft::{cfg_into_iter, cfg_iter, cfg_iter_mut};
+
+use snarkvm_algorithms::{cfg_into_iter, cfg_iter, cfg_iter_mut};
+use snarkvm_curves::{AffineCurve, Group, PairingEngine, ProjectiveCurve};
+use snarkvm_fields::{Field, One, PrimeField, Zero};
+use snarkvm_utilities::{biginteger::BigInteger, rand::UniformRand, CanonicalSerialize, ConstantSerializedSize};
 
 use blake2::{digest::generic_array::GenericArray, Blake2b, Digest};
 use rand::{rngs::OsRng, thread_rng, Rng, SeedableRng};
@@ -58,9 +49,10 @@ pub fn print_hash(hash: &[u8]) {
 
 /// Multiply a large number of points by a scalar
 pub fn batch_mul<C: AffineCurve>(bases: &mut [C], coeff: &C::ScalarField) -> Result<()> {
-    let coeff = coeff.into_repr();
-    let mut points: Vec<_> = cfg_iter!(bases).map(|base| base.mul(coeff)).collect();
-    C::Projective::batch_normalization(&mut points);
+    let mut points: Vec<_> = cfg_iter!(bases)
+        .map(|base| base.into_projective().mul(*coeff))
+        .collect();
+    C::Projective::batch_normalization(points.as_mut_slice());
     cfg_iter_mut!(bases)
         .zip(points)
         .for_each(|(base, proj)| *base = proj.into_affine());
@@ -83,7 +75,7 @@ pub fn batch_exp<C: AffineCurve>(
     }
     // raise the base to the exponent and assign it back to the base
     // this will return the points as projective
-    let mut points: Vec<_> = cfg_iter_mut!(bases)
+    let mut points: Vec<<C as AffineCurve>::Projective> = cfg_iter_mut!(bases)
         .zip(exps)
         .map(|(base, exp)| {
             // If a coefficient was provided, multiply the exponent
@@ -92,12 +84,12 @@ pub fn batch_exp<C: AffineCurve>(
 
             // Raise the base to the exponent (additive notation so it is executed
             // via a multiplication)
-            base.mul(exp)
+            base.mul(exp).into_projective()
         })
         .collect();
-    // we do not use Zexe's batch_normalization_into_affine because it allocates
+    // we do not use batch_normalization_into_affine because it allocates
     // a new vector
-    C::Projective::batch_normalization(&mut points);
+    C::Projective::batch_normalization(points.as_mut_slice());
     cfg_iter_mut!(bases)
         .zip(points)
         .for_each(|(base, proj)| *base = proj.into_affine());
@@ -263,14 +255,10 @@ pub fn from_slice(bytes: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zexe_algebra::{
-        bls12_377::Bls12_377,
-        bls12_381::{Bls12_381, Fr, G1Affine, G2Affine},
-    };
+    use snarkvm_curves::bls12_377::{Bls12_377, Fr, G1Affine, G2Affine};
 
     #[test]
     fn test_hash_to_g2() {
-        test_hash_to_g2_curve::<Bls12_381>();
         test_hash_to_g2_curve::<Bls12_377>();
     }
 
@@ -303,11 +291,11 @@ mod tests {
         let s = Fr::rand(rng);
         let g1 = G1Affine::prime_subgroup_generator();
         let g2 = G2Affine::prime_subgroup_generator();
-        let g1_s = g1.mul(s).into_affine();
-        let g2_s = g2.mul(s).into_affine();
+        let g1_s = g1.mul(s);
+        let g2_s = g2.mul(s);
 
-        assert!(same_ratio::<Bls12_381>(&(g1, g1_s), &(g2, g2_s)));
-        assert!(!same_ratio::<Bls12_381>(&(g1_s, g1), &(g2, g2_s)));
+        assert!(same_ratio::<Bls12_377>(&(g1, g1_s), &(g2, g2_s)));
+        assert!(!same_ratio::<Bls12_377>(&(g1_s, g1), &(g2, g2_s)));
     }
 
     #[test]
@@ -319,20 +307,20 @@ mod tests {
         let x = Fr::rand(rng);
         let mut acc = Fr::one();
         for _ in 0..100 {
-            v.push(G1Affine::prime_subgroup_generator().mul(acc).into_affine());
+            v.push(G1Affine::prime_subgroup_generator().mul(acc));
             acc.mul_assign(&x);
         }
 
-        let gx = G2Affine::prime_subgroup_generator().mul(x).into_affine();
+        let gx = G2Affine::prime_subgroup_generator().mul(x);
 
-        assert!(same_ratio::<Bls12_381>(
+        assert!(same_ratio::<Bls12_377>(
             &power_pairs(&v),
             &(G2Affine::prime_subgroup_generator(), gx)
         ));
 
-        v[1] = v[1].mul(Fr::rand(rng)).into_affine();
+        v[1] = v[1].mul(Fr::rand(rng));
 
-        assert!(!same_ratio::<Bls12_381>(
+        assert!(!same_ratio::<Bls12_377>(
             &power_pairs(&v),
             &(G2Affine::prime_subgroup_generator(), gx)
         ));
@@ -343,7 +331,7 @@ pub fn merge_pairs<G: AffineCurve>(v1: &[G], v2: &[G]) -> (G, G) {
     assert_eq!(v1.len(), v2.len());
     let rng = &mut thread_rng();
 
-    let randomness: Vec<<G::ScalarField as PrimeField>::BigInt> =
+    let randomness: Vec<<G::ScalarField as PrimeField>::BigInteger> =
         (0..v1.len()).map(|_| G::ScalarField::rand(rng).into_repr()).collect();
 
     let s = dense_multiexp(&v1, &randomness[..]).into_affine();
@@ -411,7 +399,7 @@ pub fn compute_g2_s<E: PairingEngine>(
 #[allow(dead_code)]
 pub fn dense_multiexp<G: AffineCurve>(
     bases: &[G],
-    exponents: &[<G::ScalarField as PrimeField>::BigInt],
+    exponents: &[<G::ScalarField as PrimeField>::BigInteger],
 ) -> G::Projective {
     if exponents.len() != bases.len() {
         panic!("invalid length")
@@ -427,7 +415,7 @@ pub fn dense_multiexp<G: AffineCurve>(
 
 fn dense_multiexp_inner<G: AffineCurve>(
     bases: &[G],
-    exponents: &[<G::ScalarField as PrimeField>::BigInt],
+    exponents: &[<G::ScalarField as PrimeField>::BigInteger],
     mut skip: u32,
     c: u32,
     handle_trivial: bool,

@@ -1,7 +1,7 @@
 use crate::{buffer_size, CheckForCorrectness, Error, Result, UseCompression};
 
-use zexe_algebra::AffineCurve;
-use zexe_fft::cfg_chunks;
+use snarkvm_algorithms::cfg_chunks;
+use snarkvm_curves::AffineCurve;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -62,15 +62,7 @@ impl<R: Read> Deserializer for R {
     ) -> Result<G> {
         let point = match compression {
             UseCompression::Yes => G::deserialize(self)?,
-            UseCompression::No => {
-                if check_for_correctness == CheckForCorrectness::OnlyNonZero
-                    || check_for_correctness == CheckForCorrectness::No
-                {
-                    G::deserialize_unchecked(self)?
-                } else {
-                    G::deserialize_uncompressed(self)?
-                }
-            }
+            UseCompression::No => G::deserialize_uncompressed(self)?,
         };
 
         if (check_for_correctness == CheckForCorrectness::Full

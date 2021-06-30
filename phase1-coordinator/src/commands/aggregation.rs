@@ -5,10 +5,10 @@ use crate::{
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761};
 
 use std::time::Instant;
 use tracing::{debug, error, trace};
-use zexe_algebra::{Bls12_377, BW6_761};
 
 pub(crate) struct Aggregation;
 

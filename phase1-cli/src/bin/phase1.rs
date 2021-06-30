@@ -10,7 +10,7 @@ use phase1_cli::{
 };
 use setup_utils::{beacon_randomness, derive_rng_from_seed, from_slice, CheckForCorrectness, UseCompression};
 
-use zexe_algebra::{Bls12_377, PairingEngine as Engine, BW6_761};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine as Engine};
 
 use gumdrop::Options;
 use std::{fs::read_to_string, process, time::Instant};

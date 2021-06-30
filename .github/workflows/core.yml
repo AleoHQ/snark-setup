@@ -39,7 +39,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.48.0
+          - 1.53.0
 #          - nightly
     steps:
       - name: Checkout
@@ -65,7 +65,7 @@ jobs:
         with:
           command: check
           args: --examples --all-features --all
-        if: matrix.rust == '1.48.0' # pinned, should be removed later
+        if: matrix.rust == '1.53.0'
 
       - name: Test
         uses: actions-rs/cargo@v1

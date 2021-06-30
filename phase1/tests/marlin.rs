@@ -4,43 +4,25 @@ mod test {
     use rand::thread_rng;
     use setup_utils::{blank_hash, CheckForCorrectness, UseCompression};
 
-    use blake2::Blake2s;
+    use snarkvm_algorithms::SNARK;
+    use snarkvm_curves::{
+        bls12_377::{Bls12_377, Fr},
+        PairingCurve,
+    };
+    use snarkvm_fields::Field;
+    use snarkvm_polycommit::kzg10::UniversalParams;
+    use snarkvm_posw::{txids_to_roots, Marlin, PoswMarlin};
+    use snarkvm_r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
+    use snarkvm_utilities::{serialize::*, UniformRand};
+
     use itertools::Itertools;
-    use snarkos_curves::bls12_377::{Bls12_377, Fr, G1Affine, G2Affine};
-    use snarkos_errors::gadgets::SynthesisError;
-    use snarkos_models::{
-        algorithms::SNARK,
-        curves::{AffineCurve, Field, PairingCurve},
-        gadgets::r1cs::{ConstraintSynthesizer, ConstraintSystem},
-    };
-    use snarkos_polycommit::{kzg10::UniversalParams, sonic_pc::SonicKZG10};
-    use snarkos_posw::{txids_to_roots, Marlin, PoswMarlin};
-    use snarkos_utilities::{serialize::*, UniformRand};
-    use std::{collections::BTreeMap, io::Cursor, ops::MulAssign};
-    use zexe_algebra::{
-        bls12_377::{G1Affine as ZexeG1Affine, G2Affine as ZexeG2Affine},
-        AffineCurve as ZexeAffineCurve,
-        Bls12_377 as ZexeBls12_377,
-    };
-
-    fn convert_vec_from_zexe_to_snarkos<Zexe: ZexeAffineCurve, Aleo: AffineCurve>(zexe: &[Zexe]) -> Vec<Aleo> {
-        let mut aleo = vec![];
-
-        let mut buffer = vec![];
-        for p_zexe in zexe {
-            p_zexe.serialize(&mut buffer).unwrap();
-            let p = Aleo::deserialize(&mut Cursor::new(&buffer)).unwrap();
-            aleo.push(p);
-        }
-
-        aleo
-    }
+    use std::{collections::BTreeMap, ops::MulAssign};
 
     #[test]
     fn test_marlin_posw_bls12_377() {
         let powers = 19usize;
         let batch = 1usize << 16;
-        let parameters = Phase1Parameters::<ZexeBls12_377>::new_full(ProvingSystem::Marlin, powers, batch);
+        let parameters = Phase1Parameters::<Bls12_377>::new_full(ProvingSystem::Marlin, powers, batch);
         let expected_response_length = parameters.get_length(UseCompression::No);
 
         // Get a non-mutable copy of the initial accumulator state.
@@ -67,10 +49,9 @@ mod test {
 
         let deserialized =
             Phase1::deserialize(&output, UseCompression::No, CheckForCorrectness::No, &parameters).unwrap();
-        let tau_powers_g1 = convert_vec_from_zexe_to_snarkos::<ZexeG1Affine, G1Affine>(&deserialized.tau_powers_g1);
-        let tau_powers_g2 = convert_vec_from_zexe_to_snarkos::<ZexeG2Affine, G2Affine>(&deserialized.tau_powers_g2);
-        let alpha_powers_g1 =
-            convert_vec_from_zexe_to_snarkos::<ZexeG1Affine, G1Affine>(&deserialized.alpha_tau_powers_g1);
+        let tau_powers_g1 = deserialized.tau_powers_g1;
+        let tau_powers_g2 = deserialized.tau_powers_g2;
+        let alpha_powers_g1 = deserialized.alpha_tau_powers_g1;
 
         let mut alpha_tau_powers_g1 = BTreeMap::new();
         for i in 0..3 {
@@ -111,7 +92,7 @@ mod test {
         // super low difficulty so we find a solution immediately
         let difficulty_target = 0xFFFF_FFFF_FFFF_FFFF_u64;
 
-        let transaction_ids = vec![vec![1u8; 32]; 8];
+        let transaction_ids = vec![[1u8; 32]; 8];
         let (_, pedersen_merkle_root, subroots) = txids_to_roots(&transaction_ids);
 
         // generate the proof
@@ -134,7 +115,7 @@ mod test {
     }
 
     impl<ConstraintF: Field> ConstraintSynthesizer<ConstraintF> for Circuit<ConstraintF> {
-        fn generate_constraints<CS: ConstraintSystem<ConstraintF>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
+        fn generate_constraints<CS: ConstraintSystem<ConstraintF>>(&self, cs: &mut CS) -> Result<(), SynthesisError> {
             let a = cs.alloc(|| "a", || self.a.ok_or(SynthesisError::AssignmentMissing))?;
             let b = cs.alloc(|| "b", || self.b.ok_or(SynthesisError::AssignmentMissing))?;
             let c = cs.alloc_input(
@@ -162,14 +143,13 @@ mod test {
         }
     }
 
-    type MultiPCSonic = SonicKZG10<Bls12_377>;
-    type MarlinSonicInst = snarkos_marlin::Marlin<Fr, MultiPCSonic, Blake2s>;
+    type MarlinInst = snarkvm_marlin::MarlinTestnet1<Bls12_377>;
 
     #[test]
     fn test_marlin_sonic_pc() {
         let powers = 16usize;
         let batch = 1usize << 12;
-        let parameters = Phase1Parameters::<ZexeBls12_377>::new_full(ProvingSystem::Marlin, powers, batch);
+        let parameters = Phase1Parameters::<Bls12_377>::new_full(ProvingSystem::Marlin, powers, batch);
         let expected_response_length = parameters.get_length(UseCompression::No);
 
         // Get a non-mutable copy of the initial accumulator state.
@@ -196,10 +176,9 @@ mod test {
 
         let deserialized =
             Phase1::deserialize(&output, UseCompression::No, CheckForCorrectness::No, &parameters).unwrap();
-        let tau_powers_g1 = convert_vec_from_zexe_to_snarkos::<ZexeG1Affine, G1Affine>(&deserialized.tau_powers_g1);
-        let tau_powers_g2 = convert_vec_from_zexe_to_snarkos::<ZexeG2Affine, G2Affine>(&deserialized.tau_powers_g2);
-        let alpha_powers_g1 =
-            convert_vec_from_zexe_to_snarkos::<ZexeG1Affine, G1Affine>(&deserialized.alpha_tau_powers_g1);
+        let tau_powers_g1 = deserialized.tau_powers_g1;
+        let tau_powers_g2 = deserialized.tau_powers_g2;
+        let alpha_powers_g1 = deserialized.alpha_tau_powers_g1;
 
         let mut alpha_tau_powers_g1 = BTreeMap::new();
         for i in 0..3 {
@@ -239,23 +218,23 @@ mod test {
             let mut c = a;
             c.mul_assign(&b);
 
-            let circ = Circuit {
+            let circuit = Circuit {
                 a: Some(a),
                 b: Some(b),
                 num_constraints: 3000,
                 num_variables: 2000,
             };
 
-            let (index_pk, index_vk) = MarlinSonicInst::index(universal_params.clone(), circ.clone()).unwrap();
-            println!("Called index");
+            let (index_pk, index_vk) = MarlinInst::circuit_setup(&universal_params, &circuit).unwrap();
+            println!("Called circuit setup");
 
-            let proof = MarlinSonicInst::prove(&index_pk, circ, &mut rng).unwrap();
+            let proof = MarlinInst::prove(&index_pk, &circuit, &mut rng).unwrap();
             println!("Called prover");
 
-            assert!(MarlinSonicInst::verify(&index_vk, &[c], &proof, &mut rng).unwrap());
+            assert!(MarlinInst::verify(&index_vk, &[c], &proof).unwrap());
             println!("Called verifier");
             println!("\nShould not verify (i.e. verifier messages should print below):");
-            assert!(!MarlinSonicInst::verify(&index_vk, &[a], &proof, &mut rng).unwrap());
+            assert!(!MarlinInst::verify(&index_vk, &[a], &proof).unwrap());
         }
     }
 }

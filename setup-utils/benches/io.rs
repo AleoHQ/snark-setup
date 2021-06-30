@@ -1,6 +1,6 @@
 use setup_utils::{BatchDeserializer, BatchSerializer, UseCompression};
 
-use zexe_algebra::{AffineCurve, Bls12_377, PairingEngine};
+use snarkvm_curves::{bls12_377::Bls12_377, AffineCurve, PairingEngine};
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 

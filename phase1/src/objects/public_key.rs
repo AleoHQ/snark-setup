@@ -1,7 +1,8 @@
 use crate::Phase1Parameters;
 use setup_utils::{Error, UseCompression};
 
-use zexe_algebra::{CanonicalDeserialize, CanonicalSerialize, PairingEngine, SerializationError};
+use snarkvm_curves::PairingEngine;
+use snarkvm_utilities::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 
 use std::io::{Read, Write};
 

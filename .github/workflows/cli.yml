@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.48.0
+          - 1.53.0
 #          - nightly
     steps:
       - name: Checkout

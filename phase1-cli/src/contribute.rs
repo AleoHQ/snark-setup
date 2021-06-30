@@ -1,7 +1,7 @@
 use phase1::{Phase1, Phase1Parameters};
 use setup_utils::{calculate_hash, print_hash, CheckForCorrectness, UseCompression};
 
-use zexe_algebra::PairingEngine as Engine;
+use snarkvm_curves::PairingEngine as Engine;
 
 use memmap::*;
 use rand::Rng;

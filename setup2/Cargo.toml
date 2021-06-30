@@ -12,16 +12,13 @@ edition = "2018"
 phase2 = { path = "../phase2", default-features = false }
 setup-utils = { path = "../setup-utils", default-features = false }
 
-snarkos-curves = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-curves", default-features = false }
-snarkos-dpc = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-dpc", default-features = false }
-snarkos-models = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-models", default-features = false }
-snarkos-parameters = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-parameters", default-features = false }
-snarkos-utilities = { git = "https://github.com/AleoHQ/snarkOS", rev = "801bf76", package = "snarkos-utilities" }
-
-zexe_algebra = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "algebra", version = "0.1.0", features = ["parallel", "full"] }
-zexe_groth16 = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "groth16", version = "0.1.0", features = ["parallel"] }
-zexe_r1cs_core = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-core", version = "0.1.0" }
-zexe_r1cs_std = { git = "https://github.com/scipr-lab/zexe", rev = "b24eda5", package = "r1cs-std", version = "0.1.0" }
+snarkvm-algorithms = { version = "0.6", default-features = false }
+snarkvm-curves = { version = "0.6" }
+snarkvm-dpc = { version = "0.6" }
+snarkvm-fields = { version = "0.6" }
+snarkvm-parameters = { version = "0.6" }
+snarkvm-r1cs = { version = "0.6" }
+snarkvm-utilities = { version = "0.6" }
 
 anyhow = { version = "1.0.37" }
 cfg-if = { version = "0.1.10" }

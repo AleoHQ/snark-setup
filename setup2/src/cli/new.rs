@@ -1,11 +1,8 @@
 use phase2::parameters::{circuit_to_qap, MPCParameters};
 use setup_utils::{log_2, CheckForCorrectness, Groth16Params, UseCompression};
-
-use zexe_algebra::{Bls12_377, PairingEngine, BW6_761};
-
-use gumdrop::Options;
-
-use snarkos_dpc::base_dpc::{
+use snarkvm_algorithms::{MerkleParameters, CRH, SNARK};
+use snarkvm_curves::{bls12_377::Bls12_377, bw6_761::BW6_761, PairingEngine as AleoPairingengine};
+use snarkvm_dpc::testnet1::{
     inner_circuit::InnerCircuit,
     instantiated::{
         CommitmentMerkleParameters,
@@ -17,24 +14,22 @@ use snarkos_dpc::base_dpc::{
     },
     outer_circuit::OuterCircuit,
     parameters::SystemParameters,
+    program::PrivateProgramInput,
+    BaseDPCComponents,
+    NoopCircuit,
 };
-use snarkos_models::{
-    algorithms::{MerkleParameters, CRH},
-    curves::{Field, PairingEngine as AleoPairingengine},
-    gadgets::r1cs::{ConstraintCounter, ConstraintSynthesizer},
-    parameters::Parameters,
-};
-use snarkos_parameters::LedgerMerkleTreeParameters;
-use snarkos_utilities::{
+use snarkvm_fields::Field;
+use snarkvm_parameters::{LedgerMerkleTreeParameters, Parameters};
+use snarkvm_r1cs::{ConstraintCounter, ConstraintSynthesizer};
+use snarkvm_utilities::{
     bytes::{FromBytes, ToBytes},
     to_bytes,
 };
 
+use gumdrop::Options;
 use memmap::MmapOptions;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
-use snarkos_dpc::base_dpc::{program::PrivateProgramInput, BaseDPCComponents, NoopCircuit};
-use snarkos_models::algorithms::SNARK;
 use std::fs::OpenOptions;
 
 type AleoInner = InnerPairing;

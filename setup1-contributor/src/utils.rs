@@ -9,7 +9,7 @@ use phase1_coordinator::{
 };
 use setup1_shared::structures::SetupKind;
 use snarkos_toolkit::account::{Address, PrivateKey, ViewKey};
-use zexe_algebra::PairingEngine;
+use snarkvm_curves::PairingEngine;
 
 use anyhow::Result;
 use rand::{CryptoRng, Rng};
