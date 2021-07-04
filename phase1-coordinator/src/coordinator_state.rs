@@ -1954,7 +1954,7 @@ impl CoordinatorState {
         // Fetch the bucket ID, locked chunks, and tasks.
         let bucket_id = participant_info.bucket_id;
         let locked_chunks: Vec<u64> = participant_info.locked_chunks.keys().cloned().collect();
-        let tasks: Vec<Task> = match participant {
+        let dropped_affected_tasks: Vec<Task> = match participant {
             Participant::Contributor(_) => participant_info.completed_tasks.iter().cloned().collect(),
             Participant::Verifier(_) => {
                 let mut tasks = participant_info.assigned_tasks.clone();
@@ -1962,6 +1962,8 @@ impl CoordinatorState {
                 tasks.into_iter().collect()
             }
         };
+
+        let mut affected_tasks = dropped_affected_tasks.clone();
 
         // Drop the contributor from the current round, and update participant info and coordinator state.
         match participant {
@@ -1992,7 +1994,8 @@ impl CoordinatorState {
                 let mut all_disposed_tasks: HashSet<Task> = participant_info.completed_tasks.iter().cloned().collect();
 
                 // A HashMap of tasks represented as (chunk ID, contribution ID) pairs.
-                let tasks_by_chunk: HashMap<u64, u64> = tasks.iter().map(|task| task.to_tuple()).collect();
+                let dropped_affected_tasks_by_chunk: HashMap<u64, u64> =
+                    dropped_affected_tasks.iter().map(|task| task.to_tuple()).collect();
 
                 // For every contributor we check if there are affected tasks. If the task
                 // is affected, it will be dropped and reassigned
@@ -2003,10 +2006,17 @@ impl CoordinatorState {
                         .pending_tasks
                         .iter()
                         .cloned()
-                        .partition(|task| tasks_by_chunk.get(&task.chunk_id()).is_some());
+                        .partition(|task| dropped_affected_tasks_by_chunk.get(&task.chunk_id()).is_some());
 
                     // TODO: revisit the handling of disposing_tasks
                     //       https://github.com/AleoHQ/aleo-setup/issues/249
+
+                    // Technically this shouldn't be required, as the
+                    // disposing tasks will not be on disk yet because
+                    // they are still being computed by the contributor.
+                    // Probably doesn't hurt to keep this here anyway for
+                    // sake of consistency.
+                    affected_tasks.extend(&disposing_tasks);
 
                     contributor_info.disposing_tasks = disposing_tasks;
                     contributor_info.pending_tasks = pending_tasks;
@@ -2014,7 +2024,7 @@ impl CoordinatorState {
                     // If completed task is based on the dropped task, it should also be dropped
                     let (disposed_tasks, completed_tasks) =
                         contributor_info.completed_tasks.iter().cloned().partition(|task| {
-                            if let Some(contribution_id) = tasks_by_chunk.get(&task.chunk_id()) {
+                            if let Some(contribution_id) = dropped_affected_tasks_by_chunk.get(&task.chunk_id()) {
                                 *contribution_id < task.contribution_id()
                             } else {
                                 false
@@ -2024,7 +2034,10 @@ impl CoordinatorState {
                     // TODO: revisit the handling of disposed_tasks
                     // https://github.com/AleoHQ/aleo-setup/issues/249
                     contributor_info.completed_tasks = completed_tasks;
-                    contributor_info.disposed_tasks.extend(disposed_tasks);
+                    contributor_info.disposed_tasks.extend(&disposed_tasks);
+
+                    // Ensure that these tasks get removed from storage
+                    affected_tasks.extend(&disposed_tasks);
 
                     all_disposed_tasks.extend(contributor_info.disposed_tasks.iter());
 
@@ -2066,7 +2079,7 @@ impl CoordinatorState {
                     // TODO: revisit the handling of disposed_tasks
                     //       https://github.com/AleoHQ/aleo-setup/issues/249
                     verifier_info.completed_tasks = completed_tasks;
-                    verifier_info.disposed_tasks.extend(disposed_tasks);
+                    verifier_info.disposed_tasks.extend(&disposed_tasks);
                 }
 
                 // Remove the current verifier from the coordinator state.
@@ -2086,14 +2099,14 @@ impl CoordinatorState {
                     participant: participant.clone(),
                     bucket_id,
                     locked_chunks,
-                    tasks,
+                    affected_tasks,
                     replacement: Some(replacement_contributor),
                 }));
             }
             Participant::Verifier(_id) => {
                 // Add just the current pending tasks to a pending verifications list.
                 let mut pending_verifications = vec![];
-                for task in &tasks {
+                for task in &dropped_affected_tasks {
                     pending_verifications.push(task);
                 }
 
@@ -2122,7 +2135,7 @@ impl CoordinatorState {
                     participant: participant.clone(),
                     bucket_id,
                     locked_chunks,
-                    tasks,
+                    affected_tasks,
                     replacement: None,
                 }));
             }
@@ -3157,8 +3170,8 @@ pub(crate) struct DropCurrentParticpantData {
     pub bucket_id: u64,
     /// Chunks currently locked by the participant.
     pub locked_chunks: Vec<u64>,
-    /// Tasks currently being performed by the participant.
-    pub tasks: Vec<Task>,
+    /// Tasks who's files need to be removed due to this drop.
+    pub affected_tasks: Vec<Task>,
     /// The participant which will replace the participant being
     /// dropped.
     pub replacement: Option<Participant>,

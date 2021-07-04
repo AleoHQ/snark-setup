@@ -811,7 +811,7 @@ impl Round {
         // Sanity check that the participant holds the lock for each specified chunk.
         let locked_chunks: Vec<_> = locked_chunks
             .par_iter()
-            .filter(|chunk_id| self.is_chunk_locked_by(**chunk_id, participant))
+            // .filter(|chunk_id| self.is_chunk_locked_by(**chunk_id, participant))
             .collect();
 
         trace!("Removing locks for chunks {:?} from {}", locked_chunks, participant);
@@ -949,8 +949,8 @@ impl Round {
     ) -> Result<(), CoordinatorError> {
         // Check that the justification is valid for this operation, and fetch the necessary state.
         let (participant, tasks) = match drop {
-            DropParticipant::BanCurrent(data) => (&data.participant, &data.tasks),
-            DropParticipant::DropCurrent(data) => (&data.participant, &data.tasks),
+            DropParticipant::BanCurrent(data) => (&data.participant, &data.affected_tasks),
+            DropParticipant::DropCurrent(data) => (&data.participant, &data.affected_tasks),
             _ => return Err(CoordinatorError::JustificationInvalid),
         };
 
@@ -1005,10 +1005,8 @@ impl Round {
                     }
                 }
 
-                // Remove the given contribution and all subsequent contributions.
-                for contribution_id in task.contribution_id()..(chunk.get_contributions().len() as u64) {
-                    chunk.remove_contribution_unsafe(contribution_id);
-                }
+                // Remove the given contribution
+                chunk.remove_contribution_unsafe(task.contribution_id());
             } else {
                 warn!(
                     "Skipping removal of chunk {} contribution {} because it does not exist in the chunk {:#?}",

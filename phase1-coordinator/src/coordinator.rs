@@ -2348,8 +2348,8 @@ impl Coordinator {
 
         // Check the justification and extract the tasks.
         let (tasks, replacement) = match drop {
-            DropParticipant::BanCurrent(data) => (&data.tasks, &data.replacement),
-            DropParticipant::DropCurrent(data) => (&data.tasks, &data.replacement),
+            DropParticipant::BanCurrent(data) => (&data.affected_tasks, &data.replacement),
+            DropParticipant::DropCurrent(data) => (&data.affected_tasks, &data.replacement),
             DropParticipant::Inactive(_) => {
                 // Participant is not part of the round, therefore
                 // there is nothing to do.
