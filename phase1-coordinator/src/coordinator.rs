@@ -5,7 +5,14 @@
 use crate::{
     authentication::Signature,
     commands::{Aggregation, Initialization},
-    coordinator_state::{CoordinatorState, DropParticipant, ParticipantInfo, RoundMetrics},
+    coordinator_state::{
+        CeremonyStorageAction,
+        CoordinatorState,
+        DropParticipant,
+        ParticipantInfo,
+        ResetCurrentRoundStorageAction,
+        RoundMetrics,
+    },
     environment::{Deployment, Environment},
     objects::{participant::*, task::TaskInitializationError, ContributionFileSignature, LockedLocators, Round, Task},
     storage::{ContributionLocator, ContributionSignatureLocator, Locator, LocatorPath, Object, Storage, StorageLock},
@@ -13,7 +20,6 @@ use crate::{
 use setup_utils::calculate_hash;
 
 use chrono::{DateTime, Utc};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     fmt,
     sync::{Arc, RwLock},
@@ -705,7 +711,7 @@ impl Coordinator {
         skip(self, participant),
         fields(participant = %participant)
     )]
-    pub fn drop_participant(&self, participant: &Participant) -> Result<Vec<LocatorPath>, CoordinatorError> {
+    pub fn drop_participant(&self, participant: &Participant) -> Result<(), CoordinatorError> {
         // Acquire the storage write lock.
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
@@ -716,19 +722,19 @@ impl Coordinator {
         let drop = state.drop_participant(participant, self.time.as_ref())?;
 
         // Update the round to reflect the coordinator state change.
-        let locations = self.drop_participant_from_storage(&mut storage, &drop)?;
+        self.drop_participant_from_storage(&mut storage, &drop)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
 
-        Ok(locations)
+        Ok(())
     }
 
     ///
     /// Bans the given participant from the ceremony.
     ///
     #[inline]
-    pub fn ban_participant(&self, participant: &Participant) -> Result<Vec<LocatorPath>, CoordinatorError> {
+    pub fn ban_participant(&self, participant: &Participant) -> Result<(), CoordinatorError> {
         // Acquire the storage write lock.
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
@@ -739,12 +745,12 @@ impl Coordinator {
         let drop = state.ban_participant(participant, self.time.as_ref())?;
 
         // Update the round on disk to reflect the coordinator state change.
-        let locations = self.drop_participant_from_storage(&mut storage, &drop)?;
+        self.drop_participant_from_storage(&mut storage, &drop)?;
 
         // Save the coordinator state in storage.
         state.save(&mut storage)?;
 
-        Ok(locations)
+        Ok(())
     }
 
     ///
@@ -997,7 +1003,6 @@ impl Coordinator {
     ///
     /// If there are no prior rounds, returns a `CoordinatorError`.
     ///
-    #[inline]
     pub fn get_round(&self, round_height: u64) -> Result<Round, CoordinatorError> {
         // Acquire the storage lock.
         let storage = StorageLock::Read(self.storage.read().unwrap());
@@ -1473,8 +1478,9 @@ impl Coordinator {
     ///
     /// Attempts to advance the ceremony to the next round.
     ///
-    #[inline]
+    #[tracing::instrument(skip(self, started_at))]
     pub fn try_advance(&self, started_at: DateTime<Utc>) -> Result<u64, CoordinatorError> {
+        tracing::debug!("Trying to advance to the next round.");
         // Acquire the storage write lock.
         let mut storage = StorageLock::Write(self.storage.write().unwrap());
 
@@ -1485,16 +1491,23 @@ impl Coordinator {
         let current_round_height = {
             // Fetch the current round height from storage.
             let current_round_height_in_storage = Self::load_current_round_height(&storage)?;
-            trace!("Current round height in storage is {}", current_round_height_in_storage);
+            debug!("Current round height in storage is {}", current_round_height_in_storage);
 
             // Fetch the current round height from coordinator state.
             let current_round_height = state.current_round_height();
-            trace!("Current round height in coordinator state is {}", current_round_height);
+            debug!("Current round height in coordinator state is {}", current_round_height);
 
             // Check that the current round height matches in storage and state.
-            match current_round_height_in_storage == current_round_height {
-                true => current_round_height,
-                false => return Err(CoordinatorError::RoundHeightMismatch),
+            if current_round_height_in_storage == current_round_height {
+                current_round_height
+            } else {
+                tracing::error!(
+                    "Round height in storage ({}) does not match the \
+                    round height in coordinator state ({})",
+                    current_round_height_in_storage,
+                    current_round_height,
+                );
+                return Err(CoordinatorError::RoundHeightMismatch);
             }
         };
 
@@ -2331,72 +2344,91 @@ impl Coordinator {
     #[inline]
     fn drop_participant_from_storage(
         &self,
-        mut storage: &mut StorageLock,
+        storage: &mut StorageLock,
         drop: &DropParticipant,
-    ) -> Result<Vec<LocatorPath>, CoordinatorError> {
+    ) -> Result<(), CoordinatorError> {
         debug!(
             "Dropping participant from storage with the following information: {:#?}",
             drop
         );
-        // Fetch the current round from storage.
-        let mut round = match Self::load_current_round(&storage) {
-            // Case 1 - This is a typical round of the ceremony.
-            Ok(round) => round,
-            // Case 2 - The ceremony has not started or storage has failed.
-            _ => return Err(CoordinatorError::RoundDoesNotExist),
-        };
 
         // Check the justification and extract the tasks.
-        let (tasks, replacement) = match drop {
-            DropParticipant::BanCurrent(data) => (&data.tasks, &data.replacement),
-            DropParticipant::DropCurrent(data) => (&data.tasks, &data.replacement),
-            DropParticipant::Inactive(_) => {
+        let drop_data = match drop {
+            DropParticipant::DropCurrent(data) => data,
+            DropParticipant::DropQueue(_) => {
                 // Participant is not part of the round, therefore
                 // there is nothing to do.
-                return Ok(vec![]);
+                return Ok(());
             }
         };
 
-        warn!("Removing locked chunks and all impacted contributions");
+        match &drop_data.storage_action {
+            CeremonyStorageAction::ResetCurrentRound(reset_action) => {
+                self.reset_round_storage(storage, reset_action)?;
+            }
+            CeremonyStorageAction::ReplaceContributor(replace_action) => {
+                warn!(
+                    "Replacing contributor {} with {}",
+                    replace_action.dropped_contributor, replace_action.replacement_contributor
+                );
 
-        // Remove the lock from the specified chunks.
-        round.remove_locks_unsafe(&mut storage, &drop)?;
-        warn!("Removed locked chunks");
+                // Fetch the current round from storage.
+                let mut round = Self::load_current_round(&storage)?;
 
-        // Remove the contributions from the specified chunks.
-        round.remove_chunk_contributions_unsafe(&mut storage, &drop)?;
-        warn!("Removed impacted contributions");
+                // Remove the contributor from the round state.
+                round.remove_contributor_unsafe(
+                    storage,
+                    &replace_action.dropped_contributor,
+                    &replace_action.locked_chunks,
+                    &replace_action.tasks,
+                )?;
 
-        // Assign a replacement contributor to the dropped tasks for the current round.
-        if let Some(replacement_contributor) = replacement {
-            round.add_replacement_contributor_unsafe(replacement_contributor.clone())?;
-            warn!("Added a replacement contributor {}", replacement_contributor);
+                // Assign a replacement contributor to the dropped tasks for the current round.
+                round.add_replacement_contributor_unsafe(replace_action.replacement_contributor.clone())?;
+                warn!(
+                    "Added a replacement contributor {}",
+                    replace_action.replacement_contributor
+                );
+
+                // Save the updated round to storage.
+                storage.update(
+                    &Locator::RoundState {
+                        round_height: round.round_height(),
+                    },
+                    Object::RoundState(round),
+                )?;
+            }
+            CeremonyStorageAction::RemoveVerifier(remove_action) => {
+                warn!("Removing verifier {}", remove_action.dropped_verifier);
+
+                // Fetch the current round from storage.
+                let mut round = Self::load_current_round(&storage)?;
+
+                warn!("Removing locked chunks and all impacted contributions");
+
+                // Remove the lock from the specified chunks.
+                round.remove_locks_unsafe(storage, &remove_action.dropped_verifier, &remove_action.locked_chunks)?;
+                warn!("Removed locked chunks");
+
+                // Remove the contributions from the specified chunks.
+                round.remove_chunk_contributions_unsafe(
+                    storage,
+                    &remove_action.dropped_verifier,
+                    &remove_action.tasks,
+                )?;
+                warn!("Removed impacted contributions");
+
+                // Save the updated round to storage.
+                storage.update(
+                    &Locator::RoundState {
+                        round_height: round.round_height(),
+                    },
+                    Object::RoundState(round),
+                )?;
+            }
         }
 
-        // Convert the tasks into contribution file locators.
-        let locators = tasks
-            .par_iter()
-            .map(|task| {
-                storage
-                    .to_path(&Locator::ContributionFile(ContributionLocator::new(
-                        round.round_height(),
-                        task.chunk_id(),
-                        task.contribution_id(),
-                        true,
-                    )))
-                    .unwrap()
-            })
-            .collect();
-
-        // Save the updated round to storage.
-        storage.update(
-            &Locator::RoundState {
-                round_height: round.round_height(),
-            },
-            Object::RoundState(round),
-        )?;
-
-        Ok(locators)
+        Ok(())
     }
 
     #[inline]
@@ -2456,6 +2488,73 @@ impl Coordinator {
     #[inline]
     pub(super) fn signature(&self) -> Arc<Box<dyn Signature>> {
         self.signature.clone()
+    }
+
+    ///
+    /// Resets the current round, with a rollback to the end of the
+    /// previous round to invite new participants into the round.
+    ///
+    pub fn reset_round(&self) -> Result<(), CoordinatorError> {
+        let mut state = self.state.write().map_err(|_| CoordinatorError::StateLockFailed)?;
+        let reset_action = state.reset_current_round(true, &*self.time)?;
+
+        // Acquire the storage write lock.
+        let mut storage = StorageLock::Write(self.storage.write().map_err(|_| CoordinatorError::StorageLockFailed)?);
+
+        storage.update(&Locator::CoordinatorState, Object::CoordinatorState(state.clone()))?;
+        self.reset_round_storage(&mut storage, &reset_action)?;
+
+        Ok(())
+    }
+
+    /// Reset the current round in storage.
+    ///
+    /// + `remove_participants` is a list of participants that will
+    ///   have their contributions removed from the round.
+    /// + If `rollback` is set to `true`, the current round will be
+    ///   decremented by 1. If `rollback` is set to `true` and the
+    ///   current round height is `0` then this will return an error
+    ///   [CoordinatorError::RoundHeightIsZero]
+    fn reset_round_storage(
+        &self,
+        storage: &mut StorageLock,
+        reset_action: &ResetCurrentRoundStorageAction,
+    ) -> Result<(), CoordinatorError> {
+        // Fetch the current height of the ceremony.
+        let current_round_height = Self::load_current_round_height(storage)?;
+        let span = tracing::error_span!("reset_round", round = current_round_height);
+        let _guard = span.enter();
+        warn!("Resetting round {}", current_round_height);
+
+        let mut round = Self::load_round(storage, current_round_height)?;
+
+        tracing::debug!("Resetting round and applying storage changes");
+        if let Some(error) = round
+            .reset(&reset_action.remove_participants)
+            .into_iter()
+            .map(|action| storage.process(action))
+            .find_map(Result::err)
+        {
+            return Err(error);
+        }
+
+        if reset_action.rollback {
+            if current_round_height == 0 {
+                return Err(CoordinatorError::RoundHeightIsZero);
+            }
+
+            let new_round_height = current_round_height - 1;
+            tracing::debug!("Rolling back to round {} in storage.", new_round_height);
+
+            storage.remove(&Locator::RoundState {
+                round_height: current_round_height,
+            })?;
+            storage.update(&Locator::RoundHeight, Object::RoundHeight(new_round_height))?;
+        }
+
+        warn!("Finished resetting round {} storage", current_round_height);
+
+        Ok(())
     }
 }
 

@@ -1,8 +1,17 @@
 use crate::{
-    coordinator_state::DropParticipant,
     environment::Environment,
     objects::{participant::*, Chunk},
-    storage::{ContributionLocator, ContributionSignatureLocator, Locator, LocatorPath, Object, StorageLock},
+    storage::{
+        ContributionLocator,
+        ContributionSignatureLocator,
+        Locator,
+        LocatorPath,
+        Object,
+        RemoveAction,
+        StorageAction,
+        StorageLock,
+        UpdateAction,
+    },
     CoordinatorError,
 };
 
@@ -13,6 +22,8 @@ use serde_aux::prelude::*;
 use serde_diff::SerdeDiff;
 use std::{collections::HashSet, hash::Hash};
 use tracing::{debug, error, trace, warn};
+
+use super::Task;
 
 /// A helper function used to check that each list of participants is unique.
 fn has_unique_elements<T>(iter: T) -> bool
@@ -783,13 +794,38 @@ impl Round {
         }
     }
 
+    /// Remove a contributor from the round.
+    pub(crate) fn remove_contributor_unsafe(
+        &mut self,
+        storage: &mut StorageLock,
+        contributor: &Participant,
+        locked_chunks: &[u64],
+        tasks: &[Task],
+    ) -> Result<(), CoordinatorError> {
+        warn!("Removing locked chunks and all impacted contributions");
+
+        // Remove the lock from the specified chunks.
+        self.remove_locks_unsafe(storage, contributor, locked_chunks)?;
+        warn!("Removed locked chunks");
+
+        // Remove the contributions from the specified chunks.
+        self.remove_chunk_contributions_unsafe(storage, contributor, tasks)?;
+        warn!("Removed impacted contributions");
+
+        self.contributor_ids = self
+            .contributor_ids
+            .clone()
+            .into_iter()
+            .filter(|participant| participant != contributor)
+            .collect();
+
+        Ok(())
+    }
+
     ///
     /// Removes the locks for the current round from the given chunk IDs.
     ///
-    /// If the given justification is not valid for this operation,
-    /// this function will return a `CoordinatorError`.
-    ///
-    /// If the given chunk IDs in the justification are not currently locked,
+    /// If the given chunk IDs are not currently locked,
     /// this function will return a `CoordinatorError`.
     ///
     /// If the given participant is not the current lock holder of the given chunk IDs,
@@ -799,15 +835,9 @@ impl Round {
     pub(crate) fn remove_locks_unsafe(
         &mut self,
         storage: &mut StorageLock,
-        drop: &DropParticipant,
+        participant: &Participant,
+        locked_chunks: &[u64],
     ) -> Result<(), CoordinatorError> {
-        // Check that the justification is valid for this operation, and fetch the necessary state.
-        let (participant, locked_chunks) = match drop {
-            DropParticipant::BanCurrent(data) => (&data.participant, &data.locked_chunks),
-            DropParticipant::DropCurrent(data) => (&data.participant, &data.locked_chunks),
-            _ => return Err(CoordinatorError::JustificationInvalid),
-        };
-
         // Sanity check that the participant holds the lock for each specified chunk.
         let locked_chunks: Vec<_> = locked_chunks
             .par_iter()
@@ -928,32 +958,26 @@ impl Round {
     /// Removes the contributions from the current round from the
     /// given (chunk ID, contribution ID) tasks.
     ///
-    /// If the given justification is not valid for this operation,
-    /// this function will return a `CoordinatorError`.
     ///
-    /// If the given (chunk ID, contribution ID) tasks in the justification
-    /// are not currently locked, this function will return a `CoordinatorError`.
+    /// If the given (chunk ID, contribution ID) tasks are not
+    /// currently locked, this function will return a
+    /// `CoordinatorError`.
     ///
-    /// If the given participant is not the current lock holder of the given chunk IDs,
-    /// this function will return a `CoordinatorError`.
+    /// If the given participant is not the current lock holder of the
+    /// given chunk IDs, this function will return a
+    /// `CoordinatorError`.
     ///
     #[tracing::instrument(
         level = "error",
-        skip(self, storage, drop),
+        skip(self, storage, tasks),
         fields(round = self.round_height())
     )]
     pub(crate) fn remove_chunk_contributions_unsafe(
         &mut self,
         storage: &mut StorageLock,
-        drop: &DropParticipant,
+        participant: &Participant,
+        tasks: &[Task],
     ) -> Result<(), CoordinatorError> {
-        // Check that the justification is valid for this operation, and fetch the necessary state.
-        let (participant, tasks) = match drop {
-            DropParticipant::BanCurrent(data) => (&data.participant, &data.tasks),
-            DropParticipant::DropCurrent(data) => (&data.participant, &data.tasks),
-            _ => return Err(CoordinatorError::JustificationInvalid),
-        };
-
         // Check if the participant is a verifier. As verifications are not dependent
         // on each other, no further update is necessary in the round state.
         if participant.is_verifier() {
@@ -1019,14 +1043,6 @@ impl Round {
             }
         }
 
-        // Remove the given participant from the set of contributor IDs.
-        self.contributor_ids = self
-            .contributor_ids
-            .par_iter()
-            .cloned()
-            .filter(|p| p != participant)
-            .collect();
-
         Ok(())
     }
 
@@ -1074,6 +1090,71 @@ impl Round {
             warn!("Modified finished_at timestamp for testing only");
         }
     }
+
+    /// Reset this round back to its initial state before
+    /// contributions started, and remove any
+    /// contributions/verifications that have been made since the
+    /// start of the round. Returns a vector of actions to perform on
+    /// the [crate::storage::Storage] to reflect the changes to the
+    /// round state. `remove_participants` is a list of participants
+    /// to remove from the round.
+    pub(crate) fn reset(&mut self, remove_participants: &[Participant]) -> Vec<StorageAction> {
+        let mut actions: Vec<StorageAction> = self
+            .chunks
+            .iter_mut()
+            .flat_map(|chunk| {
+                let contributions_remove: Vec<(u64, Vec<RemoveAction>)> = chunk.get_contributions()
+                .iter()
+                .filter(|(id, _)| **id != 0) // don't remove initial challenge
+                .map(|(id, contribution)| {
+                    let actions: Vec<RemoveAction> = contribution.get_locators()
+                        .into_iter()
+                        .map(|path| RemoveAction::new(path))
+                        .collect();
+                    (*id, actions)
+                })
+                .collect();
+
+                chunk.set_lock_holder_unsafe(None);
+
+                let actions: Vec<StorageAction> = contributions_remove
+                    .into_iter()
+                    .flat_map(|(contribution_id, actions)| {
+                        chunk.remove_contribution_unsafe(contribution_id);
+                        actions.into_iter()
+                    })
+                    .map(StorageAction::Remove)
+                    .collect();
+
+                actions.into_iter()
+            })
+            .collect();
+
+        // Remove the requested participants from the set of contributor IDs.
+        self.contributor_ids = self
+            .contributor_ids
+            .par_iter()
+            .cloned()
+            .filter(|c| remove_participants.iter().find(|p| p == &c).is_none())
+            .collect();
+
+        // Remove the requested participants from the set of verifier IDs.
+        self.verifier_ids = self
+            .verifier_ids
+            .par_iter()
+            .cloned()
+            .filter(|v| remove_participants.iter().find(|p| p == &v).is_none())
+            .collect();
+
+        actions.push(StorageAction::Update(UpdateAction {
+            locator: Locator::RoundState {
+                round_height: self.height,
+            },
+            object: Object::RoundState(self.clone()), // PERFORMANCE: clone here is not great for performance
+        }));
+
+        actions
+    }
 }
 
 #[cfg(test)]
@@ -1120,6 +1201,40 @@ mod tests {
 
         let round_1 = test_round_1_initial_json().unwrap();
         assert_eq!(1, round_1.round_height());
+    }
+
+    #[test]
+    #[serial]
+    fn test_reset_partial() {
+        initialize_test_environment(&TEST_ENVIRONMENT);
+
+        let mut round_1: Round = test_round_1_partial_json().unwrap();
+        assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_2));
+        assert!(round_1.is_contributor(&TEST_CONTRIBUTOR_ID_3));
+        assert!(round_1.is_verifier(&TEST_VERIFIER_ID_2));
+        assert!(round_1.is_verifier(&TEST_VERIFIER_ID_3));
+
+        let n_contributions = 89;
+        let n_verifications = 30;
+        let n_files = 2 * n_contributions + 2 * n_verifications;
+        let n_actions = n_files + 1; // include action to update round
+
+        let actions = round_1.reset(&[TEST_CONTRIBUTOR_ID_2.clone()]);
+        assert_eq!(n_actions, actions.len());
+
+        assert_eq!(64, round_1.chunks().len());
+
+        for chunk in round_1.chunks() {
+            assert!(!chunk.is_locked());
+            assert_eq!(1, chunk.get_contributions().len());
+            let contribution = chunk.get_contribution(0).unwrap();
+            assert!(contribution.is_verified());
+        }
+
+        assert!(!round_1.is_contributor(&*TEST_CONTRIBUTOR_ID_2));
+        assert!(round_1.is_contributor(&*TEST_CONTRIBUTOR_ID_3));
+        assert!(round_1.is_verifier(&*TEST_VERIFIER_ID_2));
+        assert!(round_1.is_verifier(&*TEST_VERIFIER_ID_3));
     }
 
     #[test]

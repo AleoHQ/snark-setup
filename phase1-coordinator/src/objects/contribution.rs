@@ -229,4 +229,28 @@ impl Contribution {
         self.verified = true;
         Ok(())
     }
+
+    /// Get a list containing all the file locators associated with
+    /// this contribution.
+    pub(crate) fn get_locators(&self) -> Vec<LocatorPath> {
+        let mut paths: Vec<LocatorPath> = Vec::new();
+
+        if let Some(path) = self.get_contributed_location().clone() {
+            paths.push(path)
+        }
+
+        if let Some(path) = self.get_contributed_signature_location().clone() {
+            paths.push(path)
+        }
+
+        if let Some(path) = self.get_verified_location().clone() {
+            paths.push(path)
+        }
+
+        if let Some(path) = self.get_verified_signature_location().clone() {
+            paths.push(path)
+        }
+
+        paths
+    }
 }

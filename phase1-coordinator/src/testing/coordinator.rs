@@ -50,6 +50,10 @@ pub static TEST_VERIFIER_ID: Lazy<Participant> = Lazy::new(|| test_coordinator_v
 pub static TEST_VERIFIER_ID_2: Lazy<Participant> =
     Lazy::new(|| Participant::Verifier(format!("testing-coordinator-verifier-2")));
 
+/// Verifier ID 2 for testing purposes only.
+pub static TEST_VERIFIER_ID_3: Lazy<Participant> =
+    Lazy::new(|| Participant::Verifier(format!("testing-coordinator-verifier-3")));
+
 /// Contributor IDs for testing purposes only.
 pub static TEST_CONTRIBUTOR_IDS: Lazy<Vec<Participant>> = Lazy::new(|| vec![Lazy::force(&TEST_CONTRIBUTOR_ID).clone()]);
 
@@ -122,6 +126,13 @@ pub fn test_round_0_json() -> anyhow::Result<Round> {
 pub fn test_round_1_initial_json() -> anyhow::Result<Round> {
     Ok(serde_json::from_str(include_str!(
         "resources/test_round_1_initial.json"
+    ))?)
+}
+
+/// Loads the reference JSON object with a serialized round for testing purposes only.
+pub fn test_round_1_partial_json() -> anyhow::Result<Round> {
+    Ok(serde_json::from_str(include_str!(
+        "resources/test_round_1_partial.json"
     ))?)
 }
 

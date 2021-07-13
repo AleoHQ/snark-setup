@@ -265,9 +265,7 @@ fn coordinator_drop_contributor_basic() -> anyhow::Result<()> {
     assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Drop the contributor from the current round.
-    let locators = coordinator.drop_participant(&contributor1)?;
-    // Number of files affected by the drop.
-    assert_eq!(&number_of_chunks - 1, locators.len());
+    coordinator.drop_participant(&contributor1)?;
 
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
@@ -374,9 +372,7 @@ fn coordinator_drop_contributor_in_between_two_contributors() -> anyhow::Result<
     assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Drop the contributor from the current round.
-    let locators = coordinator.drop_participant(&contributor2)?;
-    // Number of files affected by the drop.
-    assert_eq!(&number_of_chunks - 1, locators.len());
+    coordinator.drop_participant(&contributor2)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
@@ -534,9 +530,7 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks() -> anyhow::
     }
 
     // Drop the contributor from the current round.
-    let locators = coordinator.drop_participant(&contributor2)?;
-    // Number of files affected by the drop.
-    assert_eq!(&number_of_chunks - 2, locators.len());
+    coordinator.drop_participant(&contributor2)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
@@ -698,9 +692,7 @@ fn coordinator_drop_contributor_locked_chunks() -> anyhow::Result<()> {
     coordinator.try_lock(&contributor2)?;
 
     // Drop the contributor from the current round.
-    let locators = coordinator.drop_participant(&contributor2)?;
-    // Number of files affected by the drop.
-    assert_eq!(&number_of_chunks - 2, locators.len());
+    coordinator.drop_participant(&contributor2)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
@@ -844,9 +836,7 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
     assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Drop the contributor from the current round.
-    let locators = coordinator.drop_participant(&contributor1)?;
-    // Number of files affected by the drop.
-    assert_eq!(&number_of_chunks - 1, locators.len());
+    coordinator.drop_participant(&contributor1)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_verifier(&verifier));
@@ -1015,9 +1005,7 @@ fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
     coordinator.try_lock(&contributor2)?;
 
     // Drop the contributor from the current round.
-    let locators = coordinator.drop_participant(&contributor2)?;
-    // Number of files affected by the drop.
-    assert_eq!(&number_of_chunks - 1, locators.len());
+    coordinator.drop_participant(&contributor2)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
@@ -1155,9 +1143,7 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
     }
 
     // Drop one contributor
-    let locators = coordinator.drop_participant(&contributor1)?;
-    // Number of files affected by the drop.
-    assert_eq!(2, locators.len());
+    coordinator.drop_participant(&contributor1)?;
 
     // Check that the tasks were reassigned properly
     for (contributor, contributor_info) in coordinator.current_contributors() {
@@ -1223,8 +1209,7 @@ fn coordinator_drop_contributor_and_release_locks() {
     coordinator.try_lock(&contributor_1.participant).unwrap();
 
     // Drop the contributor which have locked the chunk
-    let locators = coordinator.drop_participant(&contributor_1.participant).unwrap();
-    assert_eq!(0, locators.len());
+    coordinator.drop_participant(&contributor_1.participant).unwrap();
 
     // Contribute to the round 1
     for _ in 0..number_of_chunks {
@@ -1512,8 +1497,7 @@ fn coordinator_drop_contributor_and_update_verifier_tasks() {
 
     verifier_1.verify(&coordinator).unwrap();
 
-    let locators = coordinator.drop_participant(&contributor_1.participant).unwrap();
-    assert_eq!(1, locators.len());
+    coordinator.drop_participant(&contributor_1.participant).unwrap();
 
     // Contribute to the round 1
     for _ in 0..number_of_chunks {
@@ -1628,9 +1612,8 @@ fn coordinator_drop_multiple_contributors() -> anyhow::Result<()> {
     coordinator.try_lock(&contributor3)?;
 
     // Drop the contributor 1 from the current round.
-    let locators = coordinator.drop_participant(&contributor1)?;
+    coordinator.drop_participant(&contributor1)?;
     // Number of files affected by the drop.
-    assert_eq!(&number_of_chunks - 2, locators.len());
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
@@ -1645,8 +1628,7 @@ fn coordinator_drop_multiple_contributors() -> anyhow::Result<()> {
     assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Drop the contributor 2 from the current round.
-    let locators = coordinator.drop_participant(&contributor2)?;
-    assert_eq!(&number_of_chunks - 2, locators.len());
+    coordinator.drop_participant(&contributor2)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
@@ -1661,8 +1643,7 @@ fn coordinator_drop_multiple_contributors() -> anyhow::Result<()> {
     assert!(!coordinator.is_finished_verifier(&verifier));
 
     // Drop the contributor 3 from the current round.
-    let locators = coordinator.drop_participant(&contributor3)?;
-    assert_eq!(&number_of_chunks - 4, locators.len());
+    coordinator.drop_participant(&contributor3)?;
     assert!(!coordinator.is_queue_contributor(&contributor1));
     assert!(!coordinator.is_queue_contributor(&contributor2));
     assert!(!coordinator.is_queue_contributor(&contributor3));
@@ -1864,10 +1845,8 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
     coordinator.update()?;
     assert_eq!(1, coordinator.current_round_height()?);
 
-    let locators = coordinator.drop_participant(&test_contributor_1.participant)?;
-    assert_eq!(0, locators.len());
-    let locators = coordinator.drop_participant(&test_contributor_2.participant)?;
-    assert_eq!(0, locators.len());
+    coordinator.drop_participant(&test_contributor_1.participant)?;
+    coordinator.drop_participant(&test_contributor_2.participant)?;
 
     assert_eq!(false, coordinator.is_queue_contributor(&test_contributor_1.participant));
     assert_eq!(false, coordinator.is_queue_contributor(&test_contributor_2.participant));
@@ -1960,9 +1939,7 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
     }
 
     // Drop the contributor from the current round.
-    let locators = coordinator.drop_participant(&contributor1)?;
-    // Number of files affected by the drop.
-    assert_eq!(number_of_chunks, locators.len());
+    coordinator.drop_participant(&contributor1)?;
     assert_eq!(false, coordinator.is_queue_contributor(&contributor1));
     assert_eq!(false, coordinator.is_queue_contributor(&contributor2));
     assert_eq!(false, coordinator.is_queue_verifier(&verifier));

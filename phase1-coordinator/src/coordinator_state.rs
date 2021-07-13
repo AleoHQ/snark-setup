@@ -231,11 +231,41 @@ impl ParticipantInfo {
         self.finished_at.is_some()
     }
 
+    /// Clear all the tasks associated with this participant.
+    fn clear_tasks(&mut self) {
+        self.pending_tasks = Default::default();
+        self.assigned_tasks = Default::default();
+        self.completed_tasks = Default::default();
+        self.disposing_tasks = Default::default();
+        self.disposed_tasks = Default::default();
+    }
+
+    /// Clear the locked chunks.
+    fn clear_locks(&mut self) {
+        self.locked_chunks = HashMap::new();
+    }
+
+    /// Clear the recorded times `started_at`, `dropped_at` and
+    /// `finished_at`.
+    fn clear_round_times(&mut self) {
+        self.started_at = None;
+        self.dropped_at = None;
+        self.finished_at = None;
+    }
+
+    /// Clear tasks, locks and round times, and start this contributor
+    /// again, assigning it new tasks.
+    fn restart_tasks(&mut self, tasks: LinkedList<Task>, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
+        self.clear_tasks();
+        self.clear_locks();
+        self.clear_round_times();
+        self.start(tasks, time)
+    }
+
     ///
     /// Assigns the participant to the given chunks for the current round,
     /// and sets the start time as the current time.
     ///
-    #[inline]
     fn start(&mut self, tasks: LinkedList<Task>, time: &dyn TimeSource) -> Result<(), CoordinatorError> {
         trace!("Starting {}", self.id);
 
@@ -860,6 +890,26 @@ pub struct RoundMetrics {
     next_round_after: Option<DateTime<Utc>>,
 }
 
+impl Default for RoundMetrics {
+    fn default() -> Self {
+        Self {
+            number_of_contributors: 0,
+            number_of_verifiers: 0,
+            is_round_aggregated: false,
+            task_timer: HashMap::new(),
+            seconds_per_task: HashMap::new(),
+            contributor_average_per_task: None,
+            verifier_average_per_task: None,
+            started_aggregation_at: None,
+            finished_aggregation_at: None,
+            estimated_finish_time: None,
+            estimated_aggregation_time: None,
+            estimated_wait_time: None,
+            next_round_after: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoordinatorState {
     /// The parameters and settings of this coordinator.
@@ -916,6 +966,190 @@ impl CoordinatorState {
         }
     }
 
+    /// Reset the progress of the current round, back to how it was in
+    /// its initialized state, however this does maintain the drop
+    /// status of participants.
+    ///
+    /// If `force_rollback` is set to `true` the coordinator will be
+    /// forced to reset to the end of the previous round and begin
+    /// waiting for new participants again before restarting the
+    /// current round. If set to `false` the rollback will only occur
+    /// if there are no available contributors or no available
+    /// verifiers left in the round.
+    ///
+    /// Returns [CoordinatorError::RoundDoesNotExist] if
+    /// [CoordinatorState::current_round_height] is set to `None`.
+    ///
+    /// Returns [CoordinatorError::RoundHeightIsZero] if
+    /// [CoordinatorState::current_round_height] is set to `Some(0)`.
+    pub fn reset_current_round(
+        &mut self,
+        force_rollback: bool,
+        time: &dyn TimeSource,
+    ) -> Result<ResetCurrentRoundStorageAction, CoordinatorError> {
+        let span = tracing::error_span!("reset_round", round = self.current_round_height.unwrap_or(0));
+        let _guard = span.enter();
+
+        let current_round_height = self.current_round_height.ok_or(CoordinatorError::RoundDoesNotExist)?;
+        if current_round_height == 0 {
+            return Err(CoordinatorError::RoundHeightIsZero);
+        }
+
+        tracing::warn!("Resetting round {}.", current_round_height);
+
+        let finished_contributors = self
+            .finished_contributors
+            .get(&current_round_height)
+            .cloned()
+            .unwrap_or_else(|| HashMap::new());
+
+        let finished_verifiers = self
+            .finished_verifiers
+            .get(&current_round_height)
+            .cloned()
+            .unwrap_or_else(|| HashMap::new());
+
+        let number_of_contributors = self.current_contributors.len() + finished_contributors.len();
+        let number_of_verifiers = self.current_verifiers.len() + finished_verifiers.len();
+        let number_of_chunks = self.environment.number_of_chunks() as u64;
+
+        let current_contributors = self
+            .current_contributors
+            .clone()
+            .into_iter()
+            .chain(finished_contributors.clone().into_iter())
+            .enumerate()
+            .map(|(bucket_index, (participant, mut participant_info))| {
+                let bucket_id = bucket_index as u64;
+                let tasks = initialize_tasks(bucket_id, number_of_chunks, number_of_contributors as u64)?;
+                participant_info.restart_tasks(tasks, time)?;
+                Ok((participant, participant_info))
+            })
+            .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
+
+        let current_verifiers = self
+            .current_verifiers
+            .clone()
+            .into_iter()
+            .chain(finished_verifiers.clone().into_iter())
+            .map(|(participant, mut participant_info)| {
+                participant_info.restart_tasks(LinkedList::new(), time)?;
+                Ok((participant, participant_info))
+            })
+            .collect::<Result<HashMap<Participant, ParticipantInfo>, CoordinatorError>>()?;
+
+        let need_to_rollback = force_rollback || number_of_contributors == 0 || number_of_verifiers == 0;
+
+        if need_to_rollback {
+            // Will roll back to the previous round and await new
+            // contributors/verifiers before starting the round again.
+            let new_round_height = current_round_height - 1;
+
+            if number_of_contributors == 0 {
+                tracing::warn!(
+                    "No contributors remaining to reset and complete the current round. \
+                    Rolling back to round {} to wait and accept new participants.",
+                    new_round_height
+                );
+            }
+
+            if number_of_verifiers == 0 {
+                tracing::warn!(
+                    "No verifiers remaining to reset and complete the current round. \
+                    Rolling back to round {} to wait and accept new participants.",
+                    new_round_height
+                );
+            }
+
+            let remove_participants: Vec<Participant> = self
+                .current_contributors
+                .clone()
+                .into_iter()
+                .chain(finished_contributors.into_iter())
+                .map(|(participant, _participant_info)| participant)
+                .collect();
+
+            let current_metrics = Some(RoundMetrics {
+                is_round_aggregated: true,
+                started_aggregation_at: Some(time.utc_now()),
+                finished_aggregation_at: Some(time.utc_now()),
+                ..Default::default()
+            });
+
+            let mut queue = self.queue.clone();
+
+            // Add each participant back into the queue.
+            for (participant, participant_info) in current_contributors
+                .iter()
+                .chain(self.current_verifiers.iter())
+                .chain(self.next.iter())
+            {
+                queue.insert(
+                    participant.clone(),
+                    (participant_info.reliability, Some(participant_info.round_height)),
+                );
+            }
+
+            *self = Self {
+                current_metrics,
+                current_round_height: Some(new_round_height),
+                queue,
+                banned: self.banned.clone(),
+                ..Self::new(self.environment.clone())
+            };
+
+            self.initialize(new_round_height);
+            self.update_next_round_after(time);
+
+            if !self.is_current_round_finished() {
+                tracing::error!(
+                    "Round rollback was not properly completed, \
+                    the current round is not finished."
+                );
+            }
+
+            if !self.is_current_round_aggregated() {
+                tracing::error!(
+                    "Round rollback was not properly completed, \
+                    the current round is not aggregated."
+                );
+            }
+
+            tracing::info!(
+                "Completed rollback to round {}, now awaiting new participants.",
+                new_round_height
+            );
+
+            // TODO there may be more things that we need to do here
+            // to get the coordinator into the waiting state.
+
+            Ok(ResetCurrentRoundStorageAction {
+                remove_participants,
+                rollback: true,
+            })
+        } else {
+            // Will reset the round to run with the remaining participants.
+
+            *self = Self {
+                current_contributors,
+                current_verifiers,
+
+                queue: self.queue.clone(),
+                banned: self.banned.clone(),
+                dropped: self.dropped.clone(),
+                ..Self::new(self.environment.clone())
+            };
+
+            self.initialize(current_round_height);
+            self.update_round_metrics();
+
+            Ok(ResetCurrentRoundStorageAction {
+                remove_participants: Vec::new(),
+                rollback: false,
+            })
+        }
+    }
+
     ///
     /// Initializes the coordinator state by setting the round height & metrics, and instantiating
     /// the finished contributors and verifiers map for the given round in the coordinator state.
@@ -929,21 +1163,7 @@ impl CoordinatorState {
 
         // Initialize the metrics for this round.
         if self.current_metrics.is_none() {
-            self.current_metrics = Some(RoundMetrics {
-                number_of_contributors: 0,
-                number_of_verifiers: 0,
-                is_round_aggregated: false,
-                task_timer: HashMap::new(),
-                seconds_per_task: HashMap::new(),
-                contributor_average_per_task: None,
-                verifier_average_per_task: None,
-                started_aggregation_at: None,
-                finished_aggregation_at: None,
-                estimated_finish_time: None,
-                estimated_aggregation_time: None,
-                estimated_wait_time: None,
-                next_round_after: None,
-            });
+            self.current_metrics = Some(Default::default());
         }
 
         // Initialize the finished contributors map for the current round, if it does not exist.
@@ -1849,11 +2069,19 @@ impl CoordinatorState {
 
         // Update the time to trigger the next round.
         if metrics.next_round_after.is_none() {
-            metrics.next_round_after =
-                Some(time.utc_now() + Duration::seconds(self.environment.queue_wait_time() as i64));
+            self.update_next_round_after(time);
         }
 
         Ok(())
+    }
+
+    /// Set the `current_metrics` ([RoundMetrics]) `next_round_after`
+    /// field to the appropriate value specified in the [Environment].
+    fn update_next_round_after(&mut self, time: &dyn TimeSource) {
+        if let Some(metrics) = &mut self.current_metrics {
+            metrics.next_round_after =
+                Some(time.utc_now() + Duration::seconds(self.environment.queue_wait_time() as i64));
+        }
     }
 
     ///
@@ -1881,13 +2109,23 @@ impl CoordinatorState {
     }
 
     ///
-    /// Drops the given participant from the queue, precommit, and current round.
+    /// Drops the given participant from the queue, precommit, and
+    /// current round.
     ///
-    /// The dropped participant information preserves the state of locked chunks,
-    /// pending tasks, and completed tasks, as reference in case this state is
-    /// necessary in the future.
+    /// Returns information/actions for the coordinator to perform in
+    /// response to the participant being dropped in the form of
+    /// [DropParticipant].
     ///
-    /// On success, this function returns a `Justification` for the coordinator to use.
+    /// If the participant is a [Participant::Contributor], this will
+    /// attempt to replace the contributor with an available
+    /// replacement contributor. If there are no replacement
+    /// contributors available the round will be reset via
+    /// [CoordinatorState::reset_current_round].
+    ///
+    /// If the participant being dropped is the only remaining regular
+    /// (non-replacement) contributor or the only remaining verifier,
+    /// the reset will include a rollback to wait for new participants
+    /// before restarting the round again.
     ///
     #[tracing::instrument(
         skip(self, participant, time),
@@ -1921,7 +2159,7 @@ impl CoordinatorState {
                 self.rollback_next_round();
             }
 
-            return Ok(DropParticipant::Inactive(DropInactiveParticipantData {
+            return Ok(DropParticipant::DropQueue(DropQueueParticipantData {
                 participant: participant.clone(),
             }));
         }
@@ -1964,7 +2202,7 @@ impl CoordinatorState {
         };
 
         // Drop the contributor from the current round, and update participant info and coordinator state.
-        match participant {
+        let storage_action: CeremonyStorageAction = match participant {
             Participant::Contributor(_id) => {
                 // TODO (howardwu): Optimization only.
                 //  -----------------------------------------------------------------------------------
@@ -2075,20 +2313,34 @@ impl CoordinatorState {
                 // Add the participant info to the dropped participants.
                 self.dropped.push(dropped_info);
 
-                // TODO (howardwu): Add a flag guard to this call, and return None, to support
-                //  the 'drop round' feature in the coordinator.
-                // Assign the replacement contributor to the dropped tasks.
-                let replacement_contributor = self.add_replacement_contributor_unsafe(bucket_id, time)?;
+                let action = if self.environment.coordinator_contributors().is_empty() {
+                    tracing::info!("No replacement contributors available, the round will be restarted.");
+                    // There are no replacement contributors so the only option is to restart the round.
+                    CeremonyStorageAction::ResetCurrentRound(ResetCurrentRoundStorageAction {
+                        remove_participants: vec![participant.clone()],
+                        rollback: false,
+                    })
+                } else {
+                    // TODO: handle the situation where all replacement contributors are currently engaged.
+                    tracing::info!(
+                        "Found a replacement contributor for the dropped contributor. \
+                        Assigning replacement contributor to the dropped contributor's tasks."
+                    );
+                    // Assign the replacement contributor to the dropped tasks.
+                    let replacement_contributor = self.add_replacement_contributor_unsafe(bucket_id, time)?;
+
+                    CeremonyStorageAction::ReplaceContributor(ReplaceContributorStorageAction {
+                        dropped_contributor: participant.clone(),
+                        bucket_id,
+                        locked_chunks,
+                        tasks,
+                        replacement_contributor,
+                    })
+                };
 
                 warn!("Dropped {} from the ceremony", participant);
 
-                return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
-                    participant: participant.clone(),
-                    bucket_id,
-                    locked_chunks,
-                    tasks,
-                    replacement: Some(replacement_contributor),
-                }));
+                action
             }
             Participant::Verifier(_id) => {
                 // Add just the current pending tasks to a pending verifications list.
@@ -2118,15 +2370,49 @@ impl CoordinatorState {
 
                 warn!("Dropped {} from the ceremony", participant);
 
-                return Ok(DropParticipant::DropCurrent(DropCurrentParticpantData {
-                    participant: participant.clone(),
-                    bucket_id,
-                    locked_chunks,
-                    tasks,
-                    replacement: None,
-                }));
+                // Restart the round because there are no verifiers
+                // left for this round.
+                let reset_round = self.current_verifiers.is_empty() && self.finished_verifiers.is_empty();
+
+                if reset_round {
+                    CeremonyStorageAction::ResetCurrentRound(ResetCurrentRoundStorageAction {
+                        remove_participants: vec![participant.clone()],
+                        rollback: false,
+                    })
+                } else {
+                    CeremonyStorageAction::RemoveVerifier(RemoveVerifierStorageAction {
+                        dropped_verifier: participant.clone(),
+                        bucket_id,
+                        locked_chunks,
+                        tasks,
+                    })
+                }
             }
-        }
+        };
+
+        // Perform the round reset if we need to.
+        let final_storage_action = match storage_action {
+            CeremonyStorageAction::ResetCurrentRound(mut reset_action) => {
+                let extra_reset_action = self.reset_current_round(false, time)?;
+                // Extend the reset action with any requirements from reset_current_round
+                for participant in extra_reset_action.remove_participants {
+                    if !reset_action.remove_participants.contains(&participant) {
+                        reset_action.remove_participants.push(participant)
+                    }
+                }
+                // Rollback takes priority.
+                reset_action.rollback |= extra_reset_action.rollback;
+                CeremonyStorageAction::ResetCurrentRound(reset_action)
+            }
+            action => action,
+        };
+
+        let drop_data = DropCurrentParticpantData {
+            participant: participant.clone(),
+            storage_action: final_storage_action,
+        };
+
+        Ok(DropParticipant::DropCurrent(drop_data))
     }
 
     ///
@@ -2151,7 +2437,7 @@ impl CoordinatorState {
 
                 debug!("{} was banned from the ceremony", participant);
 
-                Ok(DropParticipant::BanCurrent(drop_data))
+                Ok(DropParticipant::DropCurrent(drop_data))
             }
             _ => Err(CoordinatorError::JustificationInvalid),
         }
@@ -2659,13 +2945,13 @@ impl CoordinatorState {
     /// Prepares transition of the coordinator state from the current round to the next round.
     /// On precommit success, returns the list of contributors and verifiers for the next round.
     ///
-    #[inline]
+    #[tracing::instrument(skip(self, time))]
     pub(super) fn precommit_next_round(
         &mut self,
         next_round_height: u64,
         time: &dyn TimeSource,
     ) -> Result<(Vec<Participant>, Vec<Participant>), CoordinatorError> {
-        trace!("Attempting to run precommit for round {}", next_round_height);
+        tracing::debug!("Attempting to run precommit for round {}", next_round_height);
 
         // Check that the coordinator state is initialized.
         if self.status == CoordinatorStatus::Initializing {
@@ -3145,49 +3431,104 @@ impl CoordinatorState {
     }
 }
 
+/// Action to update the storage to reflect a round being reset in
+/// [CoordinatorState].
+#[derive(Debug)]
+pub struct ResetCurrentRoundStorageAction {
+    /// The participants to be removed from the round during the
+    /// reset.
+    pub remove_participants: Vec<Participant>,
+    /// Roll back to the previous round to await new participants.
+    pub rollback: bool,
+}
+
+/// Action to update the storage to reflect a verifier being
+/// removed in [CoordinatorState].
+#[derive(Debug)]
+pub struct RemoveVerifierStorageAction {
+    /// The verifier being dropped.
+    pub dropped_verifier: Participant,
+    /// Determines the starting chunk, and subsequent tasks selected
+    /// for this verifier. See [initialize_tasks] for more
+    /// information about this parameter.
+    pub bucket_id: u64,
+    /// Chunks currently locked by the verifier being dropped.
+    pub locked_chunks: Vec<u64>,
+    /// Tasks currently being performed by the verifier being
+    /// dropped.
+    pub tasks: Vec<Task>,
+}
+
+/// Action to update the storage to reflect a contributor being
+/// replaced in [CoordinatorState].
+#[derive(Debug)]
+pub struct ReplaceContributorStorageAction {
+    /// The contributor being dropped.
+    pub dropped_contributor: Participant,
+    /// Determines the starting chunk, and subsequent tasks selected
+    /// for this contributor. See [initialize_tasks] for more
+    /// information about this parameter.
+    pub bucket_id: u64,
+    /// Chunks currently locked by the contributor being dropped.
+    pub locked_chunks: Vec<u64>,
+    /// Tasks currently being performed by the contributor being dropped.
+    pub tasks: Vec<Task>,
+    /// The contributor which will replace the contributor being
+    /// dropped.
+    pub replacement_contributor: Participant,
+}
+
+/// Actions taken to update the round/storage to reflect a change in
+/// [CoordinatorState].
+#[derive(Debug)]
+pub enum CeremonyStorageAction {
+    /// See [ResetCurrentRoundStorageAction].
+    ResetCurrentRound(ResetCurrentRoundStorageAction),
+    /// See [ReplaceContributorStorageAction].
+    ReplaceContributor(ReplaceContributorStorageAction),
+    /// See [RemoveVerifierStorageAction].
+    RemoveVerifier(RemoveVerifierStorageAction),
+}
+
 /// Data required by the coordinator to drop a participant from the
 /// ceremony.
 #[derive(Debug)]
 pub(crate) struct DropCurrentParticpantData {
     /// The participant being dropped.
     pub participant: Participant,
-    /// Determines the starting chunk, and subsequent tasks selected
-    /// for this participant. See [initialize_tasks] for more
-    /// information about this parameter.
-    pub bucket_id: u64,
-    /// Chunks currently locked by the participant.
-    pub locked_chunks: Vec<u64>,
-    /// Tasks currently being performed by the participant.
-    pub tasks: Vec<Task>,
-    /// The participant which will replace the participant being
-    /// dropped.
-    pub replacement: Option<Participant>,
+    /// Action to perform to update the round/storage after the drop
+    /// to match the current coordinator state.
+    pub storage_action: CeremonyStorageAction,
 }
 
 #[derive(Debug)]
-pub(crate) struct DropInactiveParticipantData {
+pub(crate) struct DropQueueParticipantData {
     /// The participant being dropped.
     pub participant: Participant,
 }
 
-/// The reason for dropping a participant and the and data needed to
-/// perform the drop.
+/// Returns information/actions for the coordinator to perform in
+/// response to the participant being dropped.
 #[derive(Debug)]
 pub(crate) enum DropParticipant {
-    /// Coordinator has decided that a participant needs to be banned
-    /// (for a variety of potential reasons).
-    BanCurrent(DropCurrentParticpantData),
     /// Coordinator has decided that a participant needs to be dropped
     /// (for a variety of potential reasons).
     DropCurrent(DropCurrentParticpantData),
     /// Coordinator has decided that a participant in the queue is
     /// inactive and needs to be removed from the queue.
-    Inactive(DropInactiveParticipantData),
+    DropQueue(DropQueueParticipantData),
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{coordinator_state::*, testing::prelude::*, CoordinatorState, SystemTimeSource};
+    use crate::{
+        coordinator_state::*,
+        environment::{Parameters, Testing},
+        testing::prelude::*,
+        CoordinatorState,
+        MockTimeSource,
+        SystemTimeSource,
+    };
 
     #[test]
     fn test_new() {
@@ -4117,5 +4458,423 @@ mod tests {
         assert_eq!(2, state.finished_verifiers.get(&next_round_height).unwrap().len());
         assert_eq!(0, state.dropped.len());
         assert_eq!(0, state.banned.len());
+    }
+
+    /// Test a manually triggered round reset during a round with two
+    /// contributors and two verifiers.
+    #[test]
+    fn test_round_reset() {
+        test_logger();
+
+        let time = SystemTimeSource::new();
+        let environment: Environment = Testing::from(Parameters::Test8Chunks)
+            .coordinator_contributors(&[])
+            .into();
+
+        // Fetch two contributors and two verifiers.
+        let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let verifier_1 = TEST_VERIFIER_ID.clone();
+        let verifier_2 = TEST_VERIFIER_ID_2.clone();
+
+        // Initialize a new coordinator state.
+        let current_round_height = 5;
+        let mut state = CoordinatorState::new(environment.clone());
+        state.initialize(current_round_height);
+        state.add_to_queue(contributor_1.clone(), 10).unwrap();
+        state.add_to_queue(contributor_2.clone(), 9).unwrap();
+        state.add_to_queue(verifier_1.clone(), 10).unwrap();
+        state.add_to_queue(verifier_2.clone(), 9).unwrap();
+        state.update_queue().unwrap();
+        state.aggregating_current_round(&time).unwrap();
+        state.aggregated_current_round(&time).unwrap();
+
+        // Advance the coordinator to the next round.
+        let next_round_height = current_round_height + 1;
+        state.precommit_next_round(next_round_height, &time).unwrap();
+        state.commit_next_round();
+
+        let number_of_chunks = environment.number_of_chunks();
+        let chunks_3_4: u64 = (number_of_chunks * 3) / 4;
+
+        for _ in 0..chunks_3_4 {
+            // Contributor 1
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_1, &time).unwrap();
+                state.acquired_lock(&contributor_1, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_1, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+
+            // Contributor 2
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_2, &time).unwrap();
+                state.acquired_lock(&contributor_2, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_2, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+        }
+
+        assert!(!state.is_current_round_finished());
+
+        let time = MockTimeSource::new(Utc::now());
+
+        let action = state.reset_current_round(false, &time).unwrap();
+        assert!(!action.rollback);
+
+        for _ in 0..number_of_chunks {
+            // Contributor 1
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_1, &time).unwrap();
+                state.acquired_lock(&contributor_1, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_1, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+
+            // Contributor 2
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_2, &time).unwrap();
+                state.acquired_lock(&contributor_2, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_2, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+        }
+
+        assert!(state.is_current_round_finished());
+    }
+
+    /// Test a round reset triggered by a drop of one contributor
+    /// during a round with two contributors and two verifiers. The
+    /// reset is triggered because there are no replacement
+    /// contributors.
+    #[test]
+    fn test_round_reset_drop_one_contributor() {
+        test_logger();
+
+        let time = SystemTimeSource::new();
+        let environment: Environment = Testing::from(Parameters::Test8Chunks)
+            .coordinator_contributors(&[])
+            .into();
+
+        // Fetch two contributors and two verifiers.
+        let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let verifier_1 = TEST_VERIFIER_ID.clone();
+        let verifier_2 = TEST_VERIFIER_ID_2.clone();
+
+        // Initialize a new coordinator state.
+        let current_round_height = 5;
+        let mut state = CoordinatorState::new(environment.clone());
+        state.initialize(current_round_height);
+        state.add_to_queue(contributor_1.clone(), 10).unwrap();
+        state.add_to_queue(contributor_2.clone(), 9).unwrap();
+        state.add_to_queue(verifier_1.clone(), 10).unwrap();
+        state.add_to_queue(verifier_2.clone(), 9).unwrap();
+        state.update_queue().unwrap();
+        state.aggregating_current_round(&time).unwrap();
+        state.aggregated_current_round(&time).unwrap();
+
+        // Advance the coordinator to the next round.
+        let next_round_height = current_round_height + 1;
+        state.precommit_next_round(next_round_height, &time).unwrap();
+        state.commit_next_round();
+
+        let number_of_chunks = environment.number_of_chunks();
+        let chunks_3_4: u64 = (number_of_chunks * 3) / 4;
+
+        for _ in 0..chunks_3_4 {
+            // Contributor 1
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_1, &time).unwrap();
+                state.acquired_lock(&contributor_1, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_1, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+
+            // Contributor 2
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_2, &time).unwrap();
+                state.acquired_lock(&contributor_2, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_2, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+        }
+
+        assert!(!state.is_current_round_finished());
+
+        let time = MockTimeSource::new(Utc::now());
+
+        dbg!(&state.current_contributors());
+
+        let drop = state.drop_participant(&contributor_1, &time).unwrap();
+
+        dbg!(&state.current_contributors());
+
+        let drop_data = match drop {
+            DropParticipant::DropCurrent(drop_data) => drop_data,
+            DropParticipant::DropQueue(_) => panic!("Unexpected drop type: {:?}", drop),
+        };
+
+        let reset_action = match drop_data.storage_action {
+            CeremonyStorageAction::ResetCurrentRound(reset_action) => reset_action,
+            unexpected => panic!("unexpected storage action: {:?}", unexpected),
+        };
+
+        assert_eq!(1, reset_action.remove_participants.len());
+        assert!(!reset_action.rollback);
+
+        for _ in 0..number_of_chunks {
+            // Contributor 2
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_2, &time).unwrap();
+                state.acquired_lock(&contributor_2, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_2, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+        }
+
+        assert!(state.is_current_round_finished());
+    }
+
+    /// Test round reset when all contributors have been dropped
+    /// during a round that has two contributors and two verifiers.
+    /// The reset is triggered because there are no replacement
+    /// contributors, and the reset includes a rollback to invite new
+    /// contributors because there are no contributors remaining in
+    /// the round.
+    #[test]
+    fn test_round_reset_rollback_drop_all_contributors() {
+        test_logger();
+
+        let time = SystemTimeSource::new();
+
+        // Set an environment with no replacement contributors.
+        let environment: Environment = Testing::from(Parameters::Test8Chunks)
+            .coordinator_contributors(&[])
+            .into();
+
+        // Fetch two contributors and two verifiers.
+        let contributor_1 = TEST_CONTRIBUTOR_ID.clone();
+        let _contributor_2 = TEST_CONTRIBUTOR_ID_2.clone();
+        let verifier_1 = TEST_VERIFIER_ID.clone();
+
+        // Initialize a new coordinator state.
+        let current_round_height = 5;
+        let mut state = CoordinatorState::new(environment.clone());
+        state.initialize(current_round_height);
+        state.add_to_queue(contributor_1.clone(), 10).unwrap();
+        state.add_to_queue(verifier_1.clone(), 10).unwrap();
+        state.update_queue().unwrap();
+        state.aggregating_current_round(&time).unwrap();
+        state.aggregated_current_round(&time).unwrap();
+
+        // Advance the coordinator to the next round.
+        let next_round_height = current_round_height + 1;
+        state.precommit_next_round(next_round_height, &time).unwrap();
+        state.commit_next_round();
+
+        let number_of_chunks = environment.number_of_chunks();
+        let chunks_3_4: u64 = (number_of_chunks * 3) / 4;
+
+        for _ in 0..chunks_3_4 {
+            // Contributor 1
+            {
+                // Fetch a pending task for the contributor.
+                let task = state.fetch_task(&contributor_1, &time).unwrap();
+                state.acquired_lock(&contributor_1, task.chunk_id(), &time).unwrap();
+                let assigned_verifier = state.completed_task(&contributor_1, task, &time).unwrap();
+                // Fetch a pending task for the verifier.
+                let task = state.fetch_task(&assigned_verifier, &time).unwrap();
+
+                state.acquired_lock(&assigned_verifier, task.chunk_id(), &time).unwrap();
+                state.completed_task(&assigned_verifier, task, &time).unwrap();
+
+                {
+                    // Update the current round metrics.
+                    state.update_round_metrics();
+
+                    // Update the state of current round contributors.
+                    state.update_current_contributors(&time).unwrap();
+
+                    // Update the state of current round verifiers.
+                    state.update_current_verifiers(&time).unwrap();
+
+                    // Drop disconnected participants from the current round.
+                    state.update_dropped_participants(&time).unwrap();
+
+                    // Ban any participants who meet the coordinator criteria.
+                    state.update_banned_participants().unwrap();
+                }
+            }
+        }
+
+        assert!(!state.is_current_round_finished());
+
+        let time = MockTimeSource::new(Utc::now());
+
+        let drop = state.drop_participant(&contributor_1, &time).unwrap();
+
+        let drop_data = match drop {
+            DropParticipant::DropCurrent(drop_data) => drop_data,
+            DropParticipant::DropQueue(_) => panic!("Unexpected drop type: {:?}", drop),
+        };
+
+        let reset_action = match drop_data.storage_action {
+            CeremonyStorageAction::ResetCurrentRound(reset_action) => reset_action,
+            unexpected => panic!("unexpected storage action: {:?}", unexpected),
+        };
+
+        assert_eq!(1, reset_action.remove_participants.len());
+        assert!(reset_action.rollback)
     }
 }

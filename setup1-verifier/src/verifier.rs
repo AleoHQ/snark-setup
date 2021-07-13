@@ -405,7 +405,18 @@ impl Verifier {
         loop {
             // Run the verification operations.
             if let Err(error) = self.try_verify().await {
-                error!("{}", error);
+                error!("Error while verifying {}", error);
+
+                // Clearing and obtaining new tasks
+                tracing::warn!("Clearing tasks");
+                let tasks_lock = self.tasks.lock().await;
+                let current_tasks = tasks_lock.get_tasks().clone();
+                drop(tasks_lock); // lock is required to clear the tasks
+                for task in current_tasks {
+                    if let Err(error) = self.clear_task(&task).await {
+                        tracing::error!("Error clearing task: {}", error);
+                    }
+                }
             }
 
             // Sleep for 5 seconds in between iterations.

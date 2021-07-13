@@ -31,7 +31,7 @@ use std::{
 };
 use tracing::{debug, error, trace};
 
-use super::LocatorPath;
+use super::{LocatorPath, StorageAction};
 
 #[derive(Debug)]
 pub struct Disk {
@@ -412,6 +412,16 @@ impl Storage for Disk {
 
         trace!("Fetched size of {}", self.to_path(&locator)?);
         Ok(size)
+    }
+
+    fn process(&mut self, action: StorageAction) -> Result<(), CoordinatorError> {
+        match action {
+            StorageAction::Remove(remove_action) => {
+                let locator = remove_action.try_into_locator(self)?;
+                self.remove(&locator)
+            }
+            StorageAction::Update(update_action) => self.update(&update_action.locator, update_action.object),
+        }
     }
 }
 
