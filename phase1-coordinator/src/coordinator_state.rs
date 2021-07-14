@@ -2543,14 +2543,16 @@ impl CoordinatorState {
             .filter_map(|(participant, participant_info)| {
                 // Ensure we get the proper elapsed time since the last task was assigned.
                 // If no tasks have been assigned yet, we measure from the starting time.
-                if partcipant.last_released.is_none() {
-                    return None;
-                }
+                let last_seen = if participant_info.last_released.is_none() {
+                    participant_info.first_seen
+                } else {
+                    participant_info.last_released.unwrap()
+                };
 
-                let elapsed = now - participant.last_released.unwrap();
+                let elapsed = now - last_seen;
 
                 if elapsed > participant_acceptance_timeout
-                    && participant.locked_chunks.is_empty()
+                    && participant_info.locked_chunks.is_empty()
                     && !self.is_coordinator_contributor(&participant)
                 {
                     tracing::info!(
